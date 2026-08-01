@@ -1,0 +1,20 @@
+# Python env
+venv/
+Lib/
+Scripts/
+share/
+pyvenv.cfg
+__pycache__/
+*.pyc
+
+# Output data — don't commit run results
+data/
+applications/
+indeed_results_*.csv
+
+# Resume — personal file
+resumes/
+
+# OS
+.DS_Store
+Thumbs.db
