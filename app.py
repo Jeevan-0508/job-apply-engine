@@ -9,6 +9,7 @@ Run: streamlit run app.py
 import os
 import re
 import tempfile
+from urllib.parse import urlencode
 
 import streamlit as st
 
@@ -48,7 +49,17 @@ with tab1:
              "Indeed/StepStone are scraped and may break without notice.",
     )
 
-    if st.button("Search", type="primary"):
+    search_col, xing_col = st.columns([3, 1])
+    with search_col:
+        run_search = st.button("Search", type="primary")
+    with xing_col:
+        # Xing's job search is a JS-only app with no server-rendered results, so it
+        # can't be scraped the lightweight way the other four sources are -- this is
+        # a one-click deep link instead of a real integration.
+        xing_url = "https://www.xing.com/jobs/search?" + urlencode({"keywords": query, "location": location})
+        st.link_button("Open in Xing ↗", xing_url)
+
+    if run_search:
         with st.spinner("Searching..."):
             result = search_all(query, location, enabled_sources=sources)
 

@@ -27,6 +27,13 @@ Type a role and a location (e.g. "Risk Manager" / "Bayern") and it searches:
 Results are normalized into one list (title, company, location, link,
 source) regardless of where they came from.
 
+There's also an **"Open in Xing ↗"** button next to Search — Xing's job
+search is a JS-only app with no server-rendered results, so it can't be
+scraped the lightweight way the other four are (the only ways in are
+headless-browser automation or paid third-party scraping APIs, both
+disproportionate for this tool). The button just opens a pre-filled Xing
+search in a new tab instead of pretending to integrate.
+
 **Tab 2 — Tailor CV**
 Paste a job description, and it scores + reorders your CV against that
 specific posting using a weighted skill map (`engine/skill_map.py`), then
