@@ -10,7 +10,7 @@ from docx import Document
 from docx.shared import Pt, RGBColor
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import cm
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, KeepTogether
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 
@@ -115,18 +115,23 @@ def build_cv_pdf(tailored, out_path):
         flow.append(Spacer(1, 6))
 
     if tailored.get("education"):
-        flow.append(Paragraph("Education", h1))
+        section = [Paragraph("Education", h1)]
         for ed in tailored["education"]:
-            flow.append(Paragraph(f"{ed['degree']} — {ed['institution']} ({ed['year']})", body))
+            section.append(Paragraph(f"{ed['degree']} — {ed['institution']} ({ed['year']})", body))
+        flow.append(KeepTogether(section))
 
     if tailored.get("certifications"):
-        flow.append(Paragraph("Certifications", h1))
+        section = [Paragraph("Certifications", h1)]
         for c in tailored["certifications"]:
-            flow.append(Paragraph(f"• {c}", bullet_style))
+            section.append(Paragraph(f"• {c}", bullet_style))
+        flow.append(KeepTogether(section))
 
     if tailored.get("languages"):
-        flow.append(Paragraph("Languages", h1))
-        flow.append(Paragraph(", ".join(f"{l['name']} ({l['level']})" for l in tailored["languages"]), body))
+        section = [
+            Paragraph("Languages", h1),
+            Paragraph(", ".join(f"{l['name']} ({l['level']})" for l in tailored["languages"]), body),
+        ]
+        flow.append(KeepTogether(section))
 
     doc.build(flow)
     return out_path

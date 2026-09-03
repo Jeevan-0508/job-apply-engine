@@ -7,3 +7,4 @@ applications/
 data/
 .streamlit/
 .venv/
+config/profile.py
