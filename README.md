@@ -2,8 +2,14 @@
 
 A local-first job application tool for the German market: search real job
 postings across four sources, tailor your CV per posting, and generate a
-cover letter + interview prep pack — all from one Streamlit app, no cloud,
-no data leaving your machine.
+cover letter + interview prep pack — all from one Streamlit app.
+
+**Live app:** https://job-apply-engine-6a5fsqqd765xpj3pgf6sn8.streamlit.app/
+
+> Note: the hosted version above runs on Streamlit Community Cloud, so
+> anything you paste or upload there is processed on their servers, not
+> just yours. For actual personal/resume data, run it locally instead (see
+> below) so nothing leaves your machine.
 
 Built for risk/GRC/compliance roles targeting Germany, but the search terms
 and skill map are easy to repoint at any field.
