@@ -13,7 +13,9 @@ from urllib.parse import urlencode
 
 import streamlit as st
 
-from config.profile import PROFILE, is_filled
+from config.loader import get_profile, profile_is_filled
+
+PROFILE = get_profile()
 from engine.search.aggregator import search_all
 from engine.jd_analyzer import analyze_jd
 from engine.resume_parser import extract_resume_sections
@@ -90,7 +92,7 @@ with tab1:
 with tab2:
     st.subheader("Tailor your CV to a job description")
 
-    if not is_filled():
+    if not profile_is_filled(PROFILE):
         st.info(
             "config/profile.py isn't filled in yet, so this runs in basic mode: "
             "it'll reorder bullets extracted from your uploaded resume PDF, but can't "
@@ -111,7 +113,7 @@ with tab2:
             out_dir = f"applications/{safe_name}"
             os.makedirs(out_dir, exist_ok=True)
 
-            if is_filled():
+            if profile_is_filled(PROFILE):
                 tailored = tailor_profile(PROFILE, jd_signal)
                 docx_path = build_cv_docx(tailored, f"{out_dir}/CV_tailored.docx")
                 pdf_path = build_cv_pdf(tailored, f"{out_dir}/CV_tailored.pdf")
@@ -152,7 +154,7 @@ with tab2:
 with tab3:
     st.subheader("Cover letter + interview prep for the same application")
 
-    if not is_filled():
+    if not profile_is_filled(PROFILE):
         st.info("Fill in config/profile.py (especially why_germany and star_examples) for a real cover letter and prep pack.")
 
     company3 = st.text_input("Company", value=st.session_state.get("last_company", ""), key="cl_company")
