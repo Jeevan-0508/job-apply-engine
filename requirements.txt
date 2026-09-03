@@ -1,4 +1,7 @@
-pdfplumber
-pandas
+streamlit
 requests
 beautifulsoup4
+pdfplumber
+pandas
+python-docx
+reportlab
