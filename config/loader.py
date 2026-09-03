@@ -5,6 +5,8 @@ Streamlit Cloud, without ever putting real PII into git.
 Local run:    reads config/profile.py (gitignored, real data).
 Hosted app:   reads a single PROFILE_JSON secret pasted into
               Streamlit Cloud -> App settings -> Secrets. Never touches git.
+If neither is available (e.g. hosted app before the secret is set),
+falls back to the placeholder template so the app still loads.
 """
 import json
 
@@ -22,8 +24,12 @@ def get_profile():
             return json.loads(raw)
         except Exception:
             pass
-    from config.profile import PROFILE
-    return PROFILE
+    try:
+        from config.profile import PROFILE
+        return PROFILE
+    except ImportError:
+        from config.profile_example import PROFILE
+        return PROFILE
 
 
 def profile_is_filled(profile):
