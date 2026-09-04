@@ -7,3 +7,7 @@ applications/
 data/
 .streamlit/
 .venv/
+# Real profile data. The loader reads this locally and a PROFILE_JSON
+# secret when hosted, so it must never be committed.
+config/profile.py
+secrets.toml
