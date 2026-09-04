@@ -160,8 +160,15 @@ with tab3:
     if not profile_is_filled(PROFILE):
         st.info("Fill in config/profile.py (especially why_germany and star_examples) for a real cover letter and prep pack.")
 
-    company3 = st.text_input("Company", value=st.session_state.get("last_company", ""), key="cl_company")
-    role3 = st.text_input("Role title", value=st.session_state.get("last_role", ""), key="cl_role")
+    # Seed from Tab 2 before the widgets exist -- a text_input's `value=` is only
+    # applied on first render, so tailoring a CV afterwards would never reach these
+    # and the cover letter would land in applications/Company instead.
+    for source, widget in (("last_company", "cl_company"), ("last_role", "cl_role")):
+        if not st.session_state.get(widget) and st.session_state.get(source):
+            st.session_state[widget] = st.session_state[source]
+
+    company3 = st.text_input("Company", key="cl_company")
+    role3 = st.text_input("Role title", key="cl_role")
     jd_signal = st.session_state.get("last_jd_signal")
 
     if jd_signal is None:

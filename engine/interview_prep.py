@@ -6,6 +6,8 @@ papered over with invented experience.
 """
 from docx import Document
 
+from engine.jd_analyzer import match_profile, profile_corpus
+
 
 QUESTION_TEMPLATES = {
     3: "Tell me about a time you handled {skill} directly -- what was the situation and what did you do?",
@@ -20,8 +22,9 @@ def _questions_for_skill(skill, weight):
 
 
 def build_prep_notes(profile, jd_signal, company, role):
-    matched_skills = [s for s in profile.get("skills", []) if s.lower() in jd_signal]
-    gap_skills = [s for s in jd_signal if s not in [x.lower() for x in profile.get("skills", [])]]
+    matched_skills, gap_skills = match_profile(
+        profile.get("skills", []), jd_signal, profile_corpus(profile)
+    )
 
     star_by_skill = {}
     for ex in profile.get("star_examples", []):

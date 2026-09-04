@@ -9,6 +9,8 @@ from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
 from reportlab.lib.styles import getSampleStyleSheet
 
+from engine.jd_analyzer import match_profile, profile_corpus
+
 
 def _pick_proof_point(profile, jd_signal):
     """Pick the STAR example with the most overlap against this JD's skills."""
@@ -21,7 +23,9 @@ def _pick_proof_point(profile, jd_signal):
 
 
 def build_cover_letter_text(profile, jd_signal, company, role):
-    matched_skills = [s for s in profile.get("skills", []) if s.lower() in jd_signal]
+    matched_skills, _ = match_profile(
+        profile.get("skills", []), jd_signal, profile_corpus(profile)
+    )
     top_skills = matched_skills[:4] or list(jd_signal.keys())[:4]
     proof = _pick_proof_point(profile, jd_signal)
 

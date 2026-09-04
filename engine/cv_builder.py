@@ -13,6 +13,8 @@ from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, KeepTogether
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
+from engine.jd_analyzer import match_profile, profile_corpus
+
 
 def _score_bullet(bullet, jd_signal):
     b = bullet.lower()
@@ -31,9 +33,10 @@ def tailor_profile(profile, jd_signal, top_n_per_role=6):
         )
         tailored_experience.append({**role, "bullets": scored[:top_n_per_role]})
 
-    matched_skills = [s for s in profile["skills"] if s.lower() in jd_signal]
-    other_skills = [s for s in profile["skills"] if s.lower() not in jd_signal]
-    gap_skills = [s for s in jd_signal if s not in [x.lower() for x in profile["skills"]]]
+    matched_skills, gap_skills = match_profile(
+        profile["skills"], jd_signal, profile_corpus(profile)
+    )
+    other_skills = [s for s in profile["skills"] if s not in matched_skills]
 
     return {
         **profile,

@@ -51,6 +51,14 @@ Paste a job description, and it scores + reorders your CV against that
 specific posting using a weighted skill map (`engine/skill_map.py`), then
 generates a real tailored CV as both `.docx` and `.pdf`.
 
+The skill map carries aliases as well as canonical names, including German
+ones, so a posting that says "Diebstahlsermittlungen", "shrinkage" or "RCA"
+scores against the same skill as its English long form. Your own profile is
+read through that same vocabulary — without it, matching a CV to a JD is
+string equality between two differently-phrased lists, which mostly fails.
+Anything the JD asks for with no evidence anywhere in your profile is
+reported as an honest gap rather than quietly ignored.
+
 **Tab 3 — Cover Letter + Interview Prep**
 For the same job: a cover letter drawing on your actual STAR examples (never
 invented experience), and an interview prep pack with likely question themes
@@ -92,8 +100,8 @@ engine/
     linkedin_search.py          # public jobs-guest search
     deeplinks.py                # pre-filled searches for sites that block bots
     aggregator.py               # merges + normalizes the readable sources
-  jd_analyzer.py                # extracts weighted skill signal from a JD
-  skill_map.py                  # weighted skill dictionary — extend for your field
+  jd_analyzer.py                # JD -> weighted skill signal; profile match/gap logic
+  skill_map.py                  # weighted skills + aliases (EN/DE) — extend for your field
   resume_parser.py              # PDF resume -> flat lines (fallback mode)
   tailor.py                     # ranks flat lines by JD relevance (fallback mode)
   cv_builder.py                 # tailored CV -> docx + pdf
