@@ -19,7 +19,9 @@ from engine.search.deeplinks import build as build_deeplinks
 from engine.jd_analyzer import analyze_jd
 from engine.resume_parser import extract_resume_sections
 from engine.tailor import tailor_lines
-from engine.cv_builder import tailor_profile, build_cv_docx, build_cv_pdf, build_from_flat_lines
+from engine.cv_builder import (tailor_profile, build_cv_docx, build_cv_pdf,
+                               build_from_flat_lines, missing_month_precision)
+from engine.ats_check import audit_pdf
 from engine.cover_letter import build_cover_letter_docx, build_cover_letter_pdf
 from engine.interview_prep import save_prep_notes_txt, save_prep_notes_docx
 
@@ -104,6 +106,21 @@ with tab2:
 
     company = st.text_input("Company", key="cv_company")
     role = st.text_input("Role title", key="cv_role")
+    layout_label = st.radio(
+        "CV format",
+        ["International (ATS-first)", "Deutsch (tabellarischer Lebenslauf)"],
+        horizontal=True,
+        help="The German layout adds a Persönliche Daten block, German section headings, "
+             "MM/YYYY periods and a place/date signature line. Both are single-column with "
+             "no tables, because parsers interleave columns into nonsense.",
+    )
+    layout = "german" if layout_label.startswith("Deutsch") else "international"
+    fit_pages = st.selectbox(
+        "Target length", [1, 2], index=1 if layout == "german" else 0,
+        format_func=lambda n: f"{n} page" + ("s" if n > 1 else ""),
+        help="Content is never dropped to fit. The same CV is re-rendered denser and "
+             "re-measured; if it still will not fit, the longer version is kept.",
+    )
     jd_text = st.text_area("Paste the job description", height=220, key="cv_jd")
     resume_pdf = st.file_uploader("Upload your resume (PDF) -- used if profile.py isn't filled in", type=["pdf"])
 
@@ -118,10 +135,20 @@ with tab2:
 
             if profile_is_filled(PROFILE):
                 tailored = tailor_profile(PROFILE, jd_signal)
-                docx_path = build_cv_docx(tailored, f"{out_dir}/CV_tailored.docx")
-                pdf_path = build_cv_pdf(tailored, f"{out_dir}/CV_tailored.pdf")
+                docx_path = build_cv_docx(tailored, f"{out_dir}/CV_tailored.docx", layout=layout)
+                pdf_path = build_cv_pdf(tailored, f"{out_dir}/CV_tailored.pdf",
+                                        layout=layout, fit_pages=fit_pages)
+                st.session_state["last_pdf_path"] = pdf_path
+                st.session_state["last_layout"] = layout
                 if tailored.get("gap_skills"):
                     st.warning(f"JD asks for skills not in your profile: {', '.join(tailored['gap_skills'])}")
+                if layout == "german":
+                    vague = missing_month_precision(PROFILE)
+                    if vague:
+                        st.info(
+                            "German CVs are expected to give periods as MM/YYYY. These are years only, "
+                            "so they're printed as-is rather than guessed: " + "; ".join(vague)
+                        )
             elif resume_pdf is not None:
                 tmp_path = os.path.join(tempfile.gettempdir(), resume_pdf.name)
                 with open(tmp_path, "wb") as f:
@@ -147,6 +174,22 @@ with tab2:
 
                 with st.expander("Matched skills for this JD"):
                     st.write(", ".join(jd_signal.keys()) or "No skill_map.py matches found in this JD.")
+
+                report = audit_pdf(pdf_path, jd_signal)
+                st.divider()
+                sc = report["score"]
+                st.subheader(f"ATS check: {sc}/100")
+                st.caption(
+                    "Scored by reading the PDF back with a text parser, the way an applicant "
+                    f"tracking system does — not by inspecting the code that wrote it. "
+                    f"{report['pages']} page(s), {report['words']} words extracted."
+                )
+                st.progress(min(sc, 100) / 100)
+                icons = {"pass": "✅", "warn": "⚠️", "fail": "❌"}
+                for name, check in report["checks"].items():
+                    st.markdown(
+                        f"{icons.get(check['status'], '•')} **{name.replace('_', ' ')}** — {check['detail']}"
+                    )
                 st.session_state["last_jd_signal"] = jd_signal
                 st.session_state["last_company"] = company
                 st.session_state["last_role"] = role

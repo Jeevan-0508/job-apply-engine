@@ -59,6 +59,48 @@ string equality between two differently-phrased lists, which mostly fails.
 Anything the JD asks for with no evidence anywhere in your profile is
 reported as an honest gap rather than quietly ignored.
 
+Two layouts are available, both single-column with no tables:
+
+- **International (ATS-first)** — English headings, contact details only.
+- **Deutsch (tabellarischer Lebenslauf)** — German headings, a Persönliche
+  Daten block, MM/YYYY periods with *heute* for a current role, and a place,
+  date and signature line.
+
+A two-column CV is the classic German look, but parsers interleave the columns
+into nonsense, so the tabular feel is carried by putting the period on the role
+line instead. Periods given as a bare year are printed as given and flagged,
+never guessed into months.
+
+Target length is 1 or 2 pages. Content is never dropped to fit: the same CV is
+re-rendered at a tighter density and re-measured, and if it still will not fit,
+the longer version is kept.
+
+### The ATS check
+
+After generating, the app reads its own PDF back with a text parser and scores
+what it finds — `engine/ats_check.py`. Nothing trusts the builder, because the
+failure mode being guarded against is a CV that looks perfect on screen and
+arrives damaged:
+
+| Check | Why |
+|---|---|
+| Text extractable | A CV that parses as an image scores zero everywhere |
+| No glyph corruption | See below |
+| Required sections | Experience / education / skills headings, EN or DE |
+| Contact email + phone | Many parsers reject a file with no email |
+| Parseable date ranges | Without them an ATS cannot compute years of experience |
+| Single column | Columns get interleaved into nonsense |
+| No tables | Cell contents are often dropped or reordered |
+| Page count and length | 1–2 pages, 350–900 words |
+| Keyword coverage | Share of the JD's weighted skills appearing verbatim |
+
+This caught a defect that had been shipping in every CV: bullets were rendered
+in reportlab's built-in Helvetica, which has no Unicode map for U+2022, so
+**every bullet extracted as `(cid:127)`** and corrupted the line it sat on.
+Text is now set in Bitstream Vera, which ships with reportlab. The generated
+CV went from 78/100 to 95/100 on the same input. `tests/test_cv_ats.py` fails
+if anything reintroduces it.
+
 **Tab 3 — Cover Letter + Interview Prep**
 For the same job: a cover letter drawing on your actual STAR examples (never
 invented experience), and an interview prep pack with likely question themes
@@ -102,11 +144,13 @@ engine/
     aggregator.py               # merges + normalizes the readable sources
   jd_analyzer.py                # JD -> weighted skill signal; profile match/gap logic
   skill_map.py                  # weighted skills + aliases (EN/DE) — extend for your field
+  ats_check.py                  # re-parses the produced PDF and scores it
   resume_parser.py              # PDF resume -> flat lines (fallback mode)
   tailor.py                     # ranks flat lines by JD relevance (fallback mode)
-  cv_builder.py                 # tailored CV -> docx + pdf
+  cv_builder.py                 # tailored CV -> docx + pdf, both layouts
   cover_letter.py               # tailored cover letter -> docx + pdf
   interview_prep.py             # interview prep pack -> txt + docx
+tests/                          # pytest -- run: pip install -r requirements-dev.txt && pytest
 resumes/                        # put your resume PDF here (gitignored)
 applications/                   # generated output per company (gitignored)
 ```
