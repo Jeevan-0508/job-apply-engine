@@ -26,19 +26,25 @@ Type a role and a location (e.g. "Risk Manager" / "Bayern") and it searches:
 | Source | How | Durability |
 |---|---|---|
 | [Bundesagentur für Arbeit](https://jobsuche.api.bund.dev/) | Germany's official public jobs API | Stable — no scraping |
-| LinkedIn | public jobs-guest search, no login | Fairly stable, keep volume low (personal use) |
-| Indeed.de | HTML scraping | Breaks periodically, needs selector fixes |
-| StepStone.de | HTML scraping | Least stable — no public API |
+| LinkedIn | public jobs-guest search, no login | Paged 10 at a time with a delay and one retry; rate-limits if pushed |
 
 Results are normalized into one list (title, company, location, link,
-source) regardless of where they came from.
+source) regardless of where they came from. Each source reports its own
+count, and a source that returns nothing says so instead of silently
+contributing zero rows.
 
-There's also an **"Open in Xing ↗"** button next to Search — Xing's job
-search is a JS-only app with no server-rendered results, so it can't be
-scraped the lightweight way the other four are (the only ways in are
-headless-browser automation or paid third-party scraping APIs, both
-disproportionate for this tool). The button just opens a pre-filled Xing
-search in a new tab instead of pretending to integrate.
+Location accepts English names — "Bavaria", "Munich" and "Cologne" are
+mapped to Bayern, München and Köln, because the German API only accepts
+German place names. Leaving it blank searches all of Germany.
+
+**Indeed, StepStone and Xing are deep links, not integrations.** Indeed and
+StepStone answer a plain HTTPS request with HTTP 403 — verified with a full
+browser header set, not just a bare User-Agent — and Xing renders its results
+client-side, so there is nothing in the HTML to parse. Getting in would need
+headless-browser automation or a paid scraping API, both disproportionate
+here. They appear as one-click pre-filled search buttons with the reason
+shown underneath. A scraper that silently returns zero is worse than a link
+that works.
 
 **Tab 2 — Tailor CV**
 Paste a job description, and it scores + reorders your CV against that
@@ -84,9 +90,8 @@ engine/
   search/
     arbeitsagentur.py           # official public API
     linkedin_search.py          # public jobs-guest search
-    indeed_scraper.py           # scraping, may break
-    stepstone_scraper.py        # scraping, may break
-    aggregator.py                # merges + normalizes all four
+    deeplinks.py                # pre-filled searches for sites that block bots
+    aggregator.py               # merges + normalizes the readable sources
   jd_analyzer.py                # extracts weighted skill signal from a JD
   skill_map.py                  # weighted skill dictionary — extend for your field
   resume_parser.py              # PDF resume -> flat lines (fallback mode)
@@ -103,11 +108,13 @@ applications/                   # generated output per company (gitignored)
 - Nothing here calls out to an LLM or a cloud service — search hits public
   job APIs/pages directly, and CV/cover-letter/prep generation is template +
   scoring logic against your own `config/profile.py`, run entirely locally.
-- The Indeed and StepStone integrations are HTML scrapes against sites with
-  no public API. They'll break when those sites change markup — that's
-  expected, not a bug in the rest of the app.
 - LinkedIn's guest search endpoint is unauthenticated but automated access is
-  against its Terms of Service; keep query volume to personal-use levels.
+  against its Terms of Service; keep query volume to personal-use levels. It
+  returns HTTP 429 if you page too fast, in which case the app keeps whatever
+  it already fetched and tells you rather than failing the whole search.
+- There is no full-text search of job descriptions — both sources match on
+  title and metadata only, so a posting that mentions your skill in the body
+  but not the title won't surface.
 
 ## License
 

@@ -9,14 +9,13 @@ Run: streamlit run app.py
 import os
 import re
 import tempfile
-from urllib.parse import urlencode
-
 import streamlit as st
 
 from config.loader import get_profile, profile_is_filled
 
 PROFILE = get_profile()
 from engine.search.aggregator import search_all
+from engine.search.deeplinks import build as build_deeplinks
 from engine.jd_analyzer import analyze_jd
 from engine.resume_parser import extract_resume_sections
 from engine.tailor import tailor_lines
@@ -33,7 +32,7 @@ os.makedirs("applications", exist_ok=True)
 tab1, tab2, tab3 = st.tabs(["🔎 Search Jobs", "📄 Tailor CV", "✉️ Cover Letter + Interview Prep"])
 
 # ---------------------------------------------------------------------------
-# TAB 1 -- Job search across Arbeitsagentur, LinkedIn, Indeed, StepStone
+# TAB 1 -- Job search across Arbeitsagentur + LinkedIn, plus deep links
 # ---------------------------------------------------------------------------
 with tab1:
     st.subheader("Search German jobs across multiple sources")
@@ -41,37 +40,41 @@ with tab1:
     with col1:
         query = st.text_input("What (role/keywords)", value="Risk Manager")
     with col2:
-        location = st.text_input("Where (city, state e.g. Bayern/Bavaria, or blank for nationwide)", value="Bayern")
+        location = st.text_input(
+            "Where (city or state -- English names work, e.g. Bavaria or Munich. Blank = all of Germany)",
+            value="Bayern",
+        )
 
     sources = st.multiselect(
         "Sources",
-        ["Arbeitsagentur", "LinkedIn", "Indeed", "StepStone"],
+        ["Arbeitsagentur", "LinkedIn"],
         default=["Arbeitsagentur", "LinkedIn"],
-        help="Arbeitsagentur uses Germany's official public jobs API -- most stable. "
-             "Indeed/StepStone are scraped and may break without notice.",
+        help="Arbeitsagentur is Germany's official public jobs API -- most stable. "
+             "LinkedIn is fetched a page at a time and rate-limits if pushed.",
     )
 
-    search_col, xing_col = st.columns([3, 1])
-    with search_col:
-        run_search = st.button("Search", type="primary")
-    with xing_col:
-        # Xing's job search is a JS-only app with no server-rendered results, so it
-        # can't be scraped the lightweight way the other four sources are -- this is
-        # a one-click deep link instead of a real integration.
-        xing_url = "https://www.xing.com/jobs/search?" + urlencode({"keywords": query, "location": location})
-        st.link_button("Open in Xing ↗", xing_url)
+    run_search = st.button("Search", type="primary")
 
     if run_search:
         with st.spinner("Searching..."):
             result = search_all(query, location, enabled_sources=sources)
 
-        if result["errors"]:
-            for e in result["errors"]:
-                st.warning(e)
+        for e in result["errors"]:
+            st.warning(e)
+        for n in result["notes"]:
+            st.info(n)
 
         jobs = result["jobs"]
-        st.success(f"Found {len(jobs)} jobs")
+        counts = " · ".join(f"{k} {v}" for k, v in result["per_source"].items())
+        st.success(f"Found {len(jobs)} jobs" + (f" — {counts}" if counts else ""))
         st.session_state["last_search_results"] = jobs
+
+    st.caption("Sites that can't be read automatically -- open them yourself:")
+    link_cols = st.columns(4)
+    for col, site in zip(link_cols, build_deeplinks(query, location)):
+        with col:
+            st.link_button(f"{site['name']} ↗", site["url"], use_container_width=True)
+            st.caption(site["why"])
 
     jobs = st.session_state.get("last_search_results", [])
     for job in jobs:

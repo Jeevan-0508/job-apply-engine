@@ -1,38 +1,49 @@
 """
-Runs all four job sources for one query and merges results into one
+Runs the readable job sources for one query and merges results into one
 normalized list: source, title, company, location, link, snippet, posted.
-Each source fails independently -- one source breaking never blocks the rest.
+
+Each source fails independently -- one source breaking never blocks the rest,
+and a source that returns nothing says so rather than silently contributing
+zero rows.
+
+Indeed, StepStone and Xing are not here: they cannot be read without a real
+browser session. See engine/search/deeplinks.py.
 """
-from engine.search import arbeitsagentur, linkedin_search, indeed_scraper, stepstone_scraper
+from engine.search import arbeitsagentur, linkedin_search
 
 SOURCES = {
     "Arbeitsagentur": arbeitsagentur.search,
     "LinkedIn": linkedin_search.search,
-    "Indeed": indeed_scraper.search,
-    "StepStone": stepstone_scraper.search,
 }
 
 
-def search_all(query, location="Germany", enabled_sources=None, limit_per_source=20):
+def search_all(query, location="Germany", enabled_sources=None, limit_per_source=25):
     enabled_sources = enabled_sources or list(SOURCES.keys())
     all_jobs = []
     errors = []
+    notes = []
+    per_source = {}
 
     for name in enabled_sources:
         fn = SOURCES.get(name)
         if not fn:
             continue
         try:
-            result = fn(query, location, limit_per_source) if name != "Arbeitsagentur" else fn(query, location, size=limit_per_source)
-        except TypeError:
-            # arbeitsagentur.search has a slightly different signature (location, radius_km, size)
-            result = fn(query, location)
+            result = fn(query, location, limit_per_source)
         except Exception as e:
-            errors.append(f"{name}: {e}")
+            errors.append(f"{name}: {type(e).__name__}: {e}")
+            per_source[name] = 0
             continue
 
-        all_jobs.extend(result.get("jobs", []))
+        jobs = result.get("jobs", [])
+        all_jobs.extend(jobs)
+        per_source[name] = len(jobs)
+
         if result.get("error"):
             errors.append(result["error"])
+        if result.get("note"):
+            notes.append(result["note"])
+        if not jobs and not result.get("error") and not result.get("note"):
+            notes.append(f"{name} returned no matches for this query.")
 
-    return {"jobs": all_jobs, "errors": errors}
+    return {"jobs": all_jobs, "errors": errors, "notes": notes, "per_source": per_source}
