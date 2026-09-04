@@ -1,8 +1,10 @@
 # Job Apply Engine
 
-A local-first job application tool for the German market: search real job
-postings across four sources, tailor your CV per posting, and generate a
-cover letter + interview prep pack — all from one Streamlit app.
+A local-first job application tool for the German market. One click turns a
+search into finished applications: it finds real postings, reads each full job
+description, ranks them against your actual profile, and generates a tailored
+CV, cover letter, interview prep pack and ATS report per job — then tracks what
+you sent and what came back.
 
 **Live app:** https://job-apply-engine-6a5fsqqd765xpj3pgf6sn8.streamlit.app/
 
@@ -20,7 +22,7 @@ streamlit run app.py
 
 ## What it does
 
-**Tab 1 — Search Jobs**
+**Tab 1 — Find & Apply**
 Type a role and a location (e.g. "Risk Manager" / "Bayern") and it searches:
 
 | Source | How | Durability |
@@ -45,6 +47,67 @@ headless-browser automation or a paid scraping API, both disproportionate
 here. They appear as one-click pre-filled search buttons with the reason
 shown underneath. A scraper that silently returns zero is worse than a link
 that works.
+
+### One click, one finished application
+
+**Search and rank** does the whole first pass: it searches, fetches the full
+description for every result, scores each one against your profile, and sorts the
+list best-fit first. Postings already in your pipeline are marked, so a repeat
+search shows you what is new.
+
+From there **⚡ Build application** on any posting — or **Build applications for
+the top 3** — writes one folder per job containing everything needed to send it:
+
+| File | |
+|---|---|
+| `CV.pdf` / `CV.docx` | tailored and reordered against that specific posting |
+| `CoverLetter.pdf` / `.docx` | English, or a German Anschreiben |
+| `InterviewPrep.txt` / `.docx` | question themes mapped to your matched skills |
+| `ATS_report.txt` | the generated CV re-parsed and scored |
+| `posting.txt` | the description as fetched, so you can reread it later |
+| `application.json` | scores, matched and missing skills — an audit trail |
+| `application.zip` | the four documents, ready to attach |
+
+Each artefact is generated independently: a cover letter that fails to build must
+not cost you the CV, so failures are collected and reported rather than raised.
+The job is recorded in the pipeline as *Package built* in the same pass.
+
+Descriptions come from the Arbeitsagentur job-details endpoint and LinkedIn's
+public guest page (`engine/search/job_detail.py`). One that cannot be fetched
+falls back to scoring the title alone — and says so, because a score based on
+nothing is worse than an admitted gap.
+
+### Two scores, deliberately not blended
+
+Ranking reports two numbers (`engine/match.py`), because they answer different
+questions and averaging them hides both:
+
+- **Coverage** — of what this posting asks for, how much your profile can
+  evidence. The *will my CV survive the keyword screen* number.
+- **Relevance** — of what you can do, how much this posting asks for. The *is
+  this the kind of work I actually do* number.
+
+They are the same two sets measured in opposite directions. High coverage with
+low relevance is a job you would pass the screen for and be bored by; the
+reverse is your own work described in vocabulary your CV doesn't use.
+
+Requirements the posting leans on hardest and your profile can't evidence are
+named in the verdict, so a 55% tells you *which* thing is missing.
+
+A posting with too little recognisable signal is labelled as such instead of
+being ranked. Without that, a thin but precisely relevant posting scores 0 while
+a keyword-stuffed generic one scores 50, and the ordering is worse than none.
+
+### The demand report
+
+Across every posting in a search, the app aggregates which skills the market
+keeps asking for that your profile cannot evidence, ordered by how often they
+cost you a match. A real run over eight German loss-prevention postings returned
+*loss prevention missing in 8/8, German language 5/5, inventory shrinkage 3/3.*
+
+That turns a low score from a verdict into a to-do list, and it is the most
+useful output in the app: no scoring change can fix a profile that doesn't
+mention the work you actually do.
 
 **Tab 2 — Tailor CV**
 Paste a job description, and it scores + reorders your CV against that
@@ -108,6 +171,32 @@ mapped to your matched skills — plus an honest list of skills the JD wants
 that your profile doesn't show, so you can prepare an answer instead of
 being surprised.
 
+Letters are available in English or as a German **Anschreiben** with the layout
+German recruiters check for: sender and recipient blocks, a right-aligned
+*Ort, TT.MM.JJJJ* line, a bold *Bewerbung als …* subject, *Sehr geehrte Damen
+und Herren* and *Mit freundlichen Grüßen*. The German sentences are written, not
+machine-translated — but only the frame is German. Your own profile text is
+inserted exactly as you wrote it, so an English profile produces a mixed letter;
+write German bullets in `config/profile.py` if you need a fully German one.
+
+**The letter never claims a skill your profile does not evidence.** That is
+enforced by a test, not merely intended: an earlier version fell back to the
+job's own requirements when nothing matched, producing letters that opened *"my
+experience in loss prevention, fraud investigation"* — naming precisely the
+skills the applicant did not have. With no overlap it now names your own
+strongest skills and drops the overlap claim entirely.
+
+**Tab 4 — Pipeline**
+Every job you shortlist or build a package for is recorded in
+`data/pipeline.json` (gitignored, written atomically so an interrupted write
+can't leave half a pipeline behind). The tab shows totals, how many are still
+open, your response and interview rates, average coverage and average ATS score,
+and which source actually converts — applying through the source that answers is
+worth more than applying more.
+
+Applications sent and gone quiet for ten days are flagged for chasing. Status and
+notes are editable per row, and the whole pipeline exports to CSV.
+
 ## Setup
 
 ```
@@ -124,6 +213,11 @@ it, Tab 2 falls back to a basic mode that just reorders bullets extracted
 from an uploaded resume PDF, and Tabs 2/3 lose the structured detail that
 makes a tailored CV/cover letter/prep pack worth generating.
 
+`config/profile.py` is gitignored — it holds your real name, email and phone and
+must never be committed. When hosting, leave it out of the repo and supply a
+`PROFILE_JSON` secret instead; `python tools/make_secret.py` writes it in the
+exact TOML the loader reads.
+
 Then:
 
 ```
@@ -133,26 +227,34 @@ streamlit run app.py
 ## Project structure
 
 ```
-app.py                          # 3-tab Streamlit UI, the entry point
+app.py                          # 4-tab Streamlit UI, the entry point
+conftest.py                     # puts the repo root on sys.path for pytest
 config/
-  profile.py                    # your structured profile — fill in once
+  profile.py                    # your structured profile — fill in once (gitignored)
 engine/
   search/
     arbeitsagentur.py           # official public API
     linkedin_search.py          # public jobs-guest search
+    job_detail.py               # fetches the full description for one posting
     deeplinks.py                # pre-filled searches for sites that block bots
     aggregator.py               # merges + normalizes the readable sources
   jd_analyzer.py                # JD -> weighted skill signal; profile match/gap logic
   skill_map.py                  # weighted skills + aliases (EN/DE) — extend for your field
+  match.py                      # coverage/relevance scoring, verdicts, demand report
   ats_check.py                  # re-parses the produced PDF and scores it
   resume_parser.py              # PDF resume -> flat lines (fallback mode)
   tailor.py                     # ranks flat lines by JD relevance (fallback mode)
   cv_builder.py                 # tailored CV -> docx + pdf, both layouts
-  cover_letter.py               # tailored cover letter -> docx + pdf
+  cover_letter.py               # tailored cover letter -> docx + pdf, EN/DE
   interview_prep.py             # interview prep pack -> txt + docx
-tests/                          # pytest -- run: pip install -r requirements-dev.txt && pytest
+  package.py                    # one posting -> every artefact + zip, in one call
+  tracker.py                    # application pipeline, metrics, CSV export
+tools/
+  make_secret.py                # profile.py -> the PROFILE_JSON hosting secret
+tests/                          # pytest -- pip install -r requirements-dev.txt && pytest
 resumes/                        # put your resume PDF here (gitignored)
-applications/                   # generated output per company (gitignored)
+applications/                   # generated output, one folder per job (gitignored)
+data/                           # pipeline.json lives here (gitignored)
 ```
 
 ## Notes
@@ -164,9 +266,11 @@ applications/                   # generated output per company (gitignored)
   against its Terms of Service; keep query volume to personal-use levels. It
   returns HTTP 429 if you page too fast, in which case the app keeps whatever
   it already fetched and tells you rather than failing the whole search.
-- There is no full-text search of job descriptions — both sources match on
-  title and metadata only, so a posting that mentions your skill in the body
-  but not the title won't surface.
+- Search matches on title and metadata only, so a posting that mentions your
+  skill only in the body won't surface. Once a posting *is* found its full
+  description is fetched and scored — the limitation is discovery, not scoring.
+- Fetching a description per result costs one request per job, so a search for
+  50 postings makes 50 follow-up requests. Keep `limit` sane.
 
 ## License
 

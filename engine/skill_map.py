@@ -114,8 +114,12 @@ SKILL_ALIASES = {
     "machine learning": ["ml models", "predictive model", "anomaly detection"],
     "root cause analysis": ["rca", "5 whys", "corrective action", "ursachenanalyse"],
 
-    "program management": ["programme management", "program manager"],
-    "project management": ["project manager", "projektmanagement"],
+    # cross-aliased on purpose: job ads use the two interchangeably, and
+    # treating them as unrelated reported a false gap against either wording
+    "program management": ["programme management", "program manager",
+                           "project management", "projektmanagement"],
+    "project management": ["project manager", "projektmanagement",
+                           "program management", "programme management"],
     "six sigma": ["lean", "kaizen", "process improvement", "continuous improvement"],
     "vendor management": ["supplier management", "third-party management", "contract management"],
     "stakeholder management": [
