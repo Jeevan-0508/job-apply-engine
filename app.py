@@ -35,6 +35,7 @@ from engine.search import status
 from engine.search.aggregator import search_all
 from engine.search.deeplinks import build as build_deeplinks
 from engine.search.job_detail import fetch_description
+from engine import freshness
 from engine.tailor import tailor_lines
 
 st.set_page_config(page_title="Job Apply Engine", layout="wide")
@@ -194,8 +195,10 @@ with tab1:
                 detail_error = detail["error"]
                 description_status = detail["status"]
             fit = score_job(job, PROFILE, description, description_status=description_status)
+            fresh_info = freshness.freshness_for_job(job)
             scored.append({"job": job, "fit": fit, "description": description,
                            "detail_error": detail_error,
+                           "freshness": fresh_info,
                            "seen_before": tracker.job_id(job) in known})
             progress.progress(index / max(len(jobs), 1),
                               text=f"Scoring {index}/{len(jobs)}: {job.get('title','')[:50]}")
@@ -252,8 +255,14 @@ with tab1:
             ):
                 found_on = job.get("matched_sources") or [job.get("source", "")]
                 source_label = ", ".join(dict.fromkeys(s for s in found_on if s))
+                fresh_info = row.get("freshness") or {}
+                fresh_bit = ""
+                if fresh_info.get("score") is not None:
+                    fresh_bit = f" · freshness {fresh_info['score']}/100 ({fresh_info['status'].lower()})"
+                elif fresh_info.get("status") == freshness.UNKNOWN:
+                    fresh_bit = " · freshness unknown"
                 st.caption(f"Found on: {source_label} · {job.get('location','')} · "
-                           f"{job.get('posted','')} · scored on {fit['basis']}")
+                           f"{job.get('posted','')} · scored on {fit['basis']}{fresh_bit}")
                 st.write(fit["verdict"])
                 if fit["signal"]:
                     with st.popover("Why you match / why you do not"):
