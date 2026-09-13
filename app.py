@@ -39,6 +39,9 @@ from engine import freshness
 from engine.job_quality import score_job_quality
 from engine.jd_analyzer import analyze_severity
 from engine.readiness import compute_readiness
+from engine.trust_signals import trust_signals
+from engine.company_intel import company_profile
+from engine.strategy import recommend_strategy
 from engine.tailor import tailor_lines
 
 st.set_page_config(page_title="Job Apply Engine", layout="wide")
@@ -223,11 +226,18 @@ with tab1:
                                         freshness_score=fresh_info.get("score"))
             severity = analyze_severity(description) if description else {}
             readiness = compute_readiness(fit, severity=severity, quality_score=quality.get("score"))
+            trust = trust_signals(job, freshness_status=fresh_info.get("status"),
+                                  description_status=description_status)
+            company = company_profile(job.get("company", ""))
+            strategy = recommend_strategy(readiness, trust, company=company)
             scored.append({"job": job, "fit": fit, "description": description,
                            "detail_error": detail_error,
                            "freshness": fresh_info,
                            "quality": quality,
                            "readiness": readiness,
+                           "trust": trust,
+                           "company": company,
+                           "strategy": strategy,
                            "seen_before": tracker.job_id(job) in known})
             progress.progress(index / max(len(jobs), 1),
                               text=f"Scoring {index}/{len(jobs)}: {job.get('title','')[:50]}")
@@ -302,6 +312,26 @@ with tab1:
                     st.caption(f"Application readiness: {readiness['score']}/100 ({readiness['band']})")
                     if readiness.get("missing_must_haves"):
                         st.warning("Missing must-have requirement(s): " + ", ".join(readiness["missing_must_haves"]))
+                strategy = row.get("strategy") or {}
+                if strategy:
+                    st.markdown(f"**Recommended: {strategy['action']}**")
+                    for reason in strategy.get("reasons", []):
+                        st.caption(f"  · {reason}")
+                trust = row.get("trust") or {}
+                if trust.get("flags"):
+                    with st.expander(f"Trust signals ({trust['level']})"):
+                        for f in trust["flags"]:
+                            icon = "⚠️" if f["level"] == "WARNING" else "ℹ️"
+                            st.caption(f"{icon} {f['text']}")
+                company = row.get("company") or {}
+                if company.get("known"):
+                    with st.expander(f"Company history: {job.get('company','')} "
+                                     f"({company['postings_seen']} posting(s) seen, "
+                                     f"{company['applications_sent']} applied)"):
+                        for flag in company.get("flags", []):
+                            st.caption(f"• {flag}")
+                        if company.get("roles_seen"):
+                            st.caption("Roles seen: " + ", ".join(company["roles_seen"]))
                 st.write(fit["verdict"])
                 if fit["signal"]:
                     with st.popover("Why you match / why you do not"):
