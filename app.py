@@ -36,6 +36,7 @@ from engine.search.aggregator import search_all
 from engine.search.deeplinks import build as build_deeplinks
 from engine.search.job_detail import fetch_description
 from engine import freshness
+from engine.job_quality import score_job_quality
 from engine.tailor import tailor_lines
 
 st.set_page_config(page_title="Job Apply Engine", layout="wide")
@@ -196,9 +197,13 @@ with tab1:
                 description_status = detail["status"]
             fit = score_job(job, PROFILE, description, description_status=description_status)
             fresh_info = freshness.freshness_for_job(job)
+            quality = score_job_quality(job, description=description,
+                                        description_status=description_status,
+                                        freshness_score=fresh_info.get("score"))
             scored.append({"job": job, "fit": fit, "description": description,
                            "detail_error": detail_error,
                            "freshness": fresh_info,
+                           "quality": quality,
                            "seen_before": tracker.job_id(job) in known})
             progress.progress(index / max(len(jobs), 1),
                               text=f"Scoring {index}/{len(jobs)}: {job.get('title','')[:50]}")
@@ -261,8 +266,12 @@ with tab1:
                     fresh_bit = f" · freshness {fresh_info['score']}/100 ({fresh_info['status'].lower()})"
                 elif fresh_info.get("status") == freshness.UNKNOWN:
                     fresh_bit = " · freshness unknown"
+                quality = row.get("quality") or {}
+                quality_bit = f" · listing quality {quality['score']}/100 ({quality['band'].lower()})" if quality else ""
                 st.caption(f"Found on: {source_label} · {job.get('location','')} · "
-                           f"{job.get('posted','')} · scored on {fit['basis']}{fresh_bit}")
+                           f"{job.get('posted','')} · scored on {fit['basis']}{fresh_bit}{quality_bit}")
+                if quality.get("notes"):
+                    st.caption("Listing quality notes: " + "; ".join(quality["notes"]))
                 st.write(fit["verdict"])
                 if fit["signal"]:
                     with st.popover("Why you match / why you do not"):
