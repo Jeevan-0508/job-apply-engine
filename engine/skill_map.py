@@ -91,7 +91,9 @@ SKILL_ALIASES = {
         "theft investigations", "internal theft", "pilferage", "shrinkage investigation",
         "diebstahl", "diebstahlsermittlungen",
     ],
-    "fraud investigation": ["fraud investigations", "investigations", "ermittlungen"],
+    # "investigations" alone was an alias here and matched any bullet about
+    # theft investigations too -- too generic to mean fraud specifically.
+    "fraud investigation": ["fraud investigations", "ermittlungen"],
     "fraud detection": ["fraud detection systems", "fraud monitoring", "betrugserkennung"],
     "fraud prevention": ["fraud risk", "fraud risk management", "betrugsprävention"],
     "supply chain security": ["transportation security", "logistics security", "freight security", "ttsi", "tapa"],
