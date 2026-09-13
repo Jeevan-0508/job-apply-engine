@@ -421,3 +421,36 @@ def test_score_job_reports_description_status_for_partial_description():
     result = score_job(job, PROFILE, description=description, description_status=job_detail.PARTIAL)
     assert result["description_status"] == job_detail.PARTIAL
     assert "lower-confidence" in result["basis"]
+
+
+def test_aggregator_observability_reports_fetched_rejected_and_duplicates(monkeypatch):
+    monkeypatch.setattr(aggregator, "SOURCES", {
+        "Arbeitsagentur": _fake_source({
+            "Risk Manager": [{"source": "Arbeitsagentur", "title": "Risk Manager", "company": "Acme", "location": "Berlin"}],
+            "Enterprise Risk Manager": [{"source": "Arbeitsagentur", "title": "Software Engineer", "company": "Beta", "location": "Berlin"}],
+            "Operational Risk Manager": [],
+            "Risk & Compliance Manager": [],
+        }),
+    })
+    result = aggregator.search_all("Risk Manager", "Berlin", enabled_sources=["Arbeitsagentur"])
+    obs = result["observability"]["Arbeitsagentur"]
+    assert obs["requests"] == 5  # original + 4 configured aliases for "risk manager"
+    assert obs["fetched"] == 2  # 1 relevant + 1 irrelevant alias hit, before filtering
+    assert obs["rejected"] == 1  # the "Software Engineer" alias hit, filtered as irrelevant
+    assert obs["kept_before_dedupe"] == 1
+    assert result["final_canonical"] == 1
+
+
+def test_aggregator_observability_counts_duplicates_removed(monkeypatch):
+    shared = {"source": "Arbeitsagentur", "title": "Risk Manager", "company": "Acme",
+              "location": "Berlin", "link": "https://x.co/1"}
+    monkeypatch.setattr(aggregator, "SOURCES", {
+        "Arbeitsagentur": lambda q, l, n: {"jobs": [shared], "error": None, "note": None, "total": 1, "status": status_mod.SUCCESS},
+        "LinkedIn": lambda q, l, n: {"jobs": [dict(shared, source="LinkedIn")], "error": None, "note": None, "total": 1, "status": status_mod.SUCCESS},
+    })
+    result = aggregator.search_all("Risk Manager", "Berlin",
+                                    enabled_sources=["Arbeitsagentur", "LinkedIn"], expand_roles=False)
+    assert result["duplicates_removed"] == 1
+    assert result["final_canonical"] == 1
+    assert result["observability"]["Arbeitsagentur"]["final_canonical_contribution"] == 1
+    assert result["observability"]["LinkedIn"]["final_canonical_contribution"] == 1

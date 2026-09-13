@@ -204,7 +204,16 @@ with tab1:
         scored.sort(key=lambda row: (-row["fit"]["relevance"], -row["fit"]["coverage"]))
         st.session_state["scored"] = scored
         counts = " · ".join(f"{k} {v}" for k, v in result["per_source"].items())
-        st.success(f"{len(jobs)} jobs" + (f" — {counts}" if counts else ""))
+        dup_note = f" · {result['duplicates_removed']} duplicate(s) merged" if result.get("duplicates_removed") else ""
+        st.success(f"{len(jobs)} jobs" + (f" — {counts}" if counts else "") + dup_note)
+        with st.expander("Source health for this search"):
+            for name, obs in result.get("observability", {}).items():
+                st.caption(
+                    f"**{name}** — {status.label(obs['status'])} · "
+                    f"{obs['requests']} request(s) · {obs['fetched']} fetched · "
+                    f"{obs['rejected']} filtered as off-topic · "
+                    f"{obs['final_canonical_contribution']} in final results"
+                )
 
     scored = st.session_state.get("scored", [])
 

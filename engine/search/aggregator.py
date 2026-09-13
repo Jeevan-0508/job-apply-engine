@@ -14,6 +14,11 @@ alias-only hits by relevance, and folds them into the same merge --
 still subject to the same deterministic dedupe (engine/dedupe.py), never
 a title-similarity merge.
 
+Full observability per source (requests made, jobs fetched before
+filtering, jobs rejected by the relevance filter, and duplicates removed
+during the cross-source merge) is returned in "observability", so a
+search can be audited afterwards rather than just trusted.
+
 Indeed, StepStone and Xing are not here: they cannot be read without a real
 browser session. See engine/search/deeplinks.py.
 """
@@ -51,6 +56,7 @@ def search_all(query, location="Germany", enabled_sources=None, limit_per_source
     notes = []
     per_source = {}
     source_status = {}
+    observability = {}
 
     queries = [query]
     if expand_roles:
@@ -63,12 +69,18 @@ def search_all(query, location="Germany", enabled_sources=None, limit_per_source
 
         source_jobs = []
         statuses_for_source = []
+        fetched = 0
+        rejected = 0
+
         for i, q in enumerate(queries):
             jobs, error, note, s = _run_source(name, fn, q, location, limit_per_source)
             statuses_for_source.append(s)
+            fetched += len(jobs)
             if i > 0:
                 # alias-expanded query: keep only results still relevant to the original ask
+                before = len(jobs)
                 jobs = [j for j in jobs if role_aliases.is_relevant(query, j.get("title"))]
+                rejected += before - len(jobs)
             source_jobs.extend(jobs)
             if error:
                 errors.append(error)
@@ -83,7 +95,7 @@ def search_all(query, location="Germany", enabled_sources=None, limit_per_source
         primary_status = statuses_for_source[0]
         if primary_status in status.PROBLEM_STATUSES:
             source_status[name] = primary_status
-        elif any(s == status.SUCCESS for s in statuses_for_source):
+        elif any(st == status.SUCCESS for st in statuses_for_source):
             source_status[name] = status.SUCCESS
         else:
             source_status[name] = primary_status
@@ -93,7 +105,20 @@ def search_all(query, location="Germany", enabled_sources=None, limit_per_source
         ):
             notes.append(f"{name} returned no matches for this query.")
 
+        observability[name] = {
+            "status": source_status[name],
+            "requests": len(queries),
+            "fetched": fetched,
+            "rejected": rejected,
+            "kept_before_dedupe": len(source_jobs),
+        }
+
     deduped = dedupe_merge(all_jobs)
+    duplicates_removed = len(all_jobs) - len(deduped)
+    for name in observability:
+        observability[name]["final_canonical_contribution"] = sum(
+            1 for j in deduped if name in (j.get("matched_sources") or [])
+        )
 
     return {
         "jobs": deduped,
@@ -101,4 +126,7 @@ def search_all(query, location="Germany", enabled_sources=None, limit_per_source
         "notes": notes,
         "per_source": per_source,
         "source_status": source_status,
+        "observability": observability,
+        "duplicates_removed": duplicates_removed,
+        "final_canonical": len(deduped),
     }
