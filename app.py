@@ -354,6 +354,21 @@ with tab1:
                             show_integrity_report(outcome["integrity"])
                         if outcome.get("red_team"):
                             show_red_team_report(outcome["red_team"])
+                        vdiff = outcome.get("version_diff")
+                        if vdiff:
+                            deltas = []
+                            for label, key in (("ATS", "ats_delta"), ("Integrity", "integrity_delta"),
+                                               ("Red Team", "red_team_delta"), ("Coverage", "coverage_delta")):
+                                d = vdiff.get(key)
+                                if d is not None and d != 0:
+                                    deltas.append(f"{label} {'+' if d > 0 else ''}{d}")
+                            msg = f"vs. previous build ({vdiff['version_count']} total): " + (
+                                ", ".join(deltas) if deltas else "no score change")
+                            if vdiff["skills_gained"]:
+                                msg += f" · gained: {', '.join(vdiff['skills_gained'])}"
+                            if vdiff["skills_lost"]:
+                                msg += f" · lost: {', '.join(vdiff['skills_lost'])}"
+                            st.info(msg)
 
                 if row["description"]:
                     with st.popover("Read the description"):

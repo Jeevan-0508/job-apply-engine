@@ -23,6 +23,7 @@ from engine.cv_builder import build_cv_docx, build_cv_pdf, tailor_profile
 from engine.interview_prep import save_prep_notes_docx, save_prep_notes_txt
 from engine.match import score_text
 from engine.cv_redteam import red_team_cv
+from engine.versioning import record_version, diff_last_two
 
 
 def safe_name(value, fallback="Unknown"):
@@ -162,6 +163,9 @@ def build_package(job, jd_text, profile, base_dir="applications",
                    ats_score=report["score"] if report else None,
                    jd_chars=len(jd_text or ""))
 
+    record_version(job, meta)
+    version_diff = diff_last_two(job)
+
     red_team_lines = [f"CV Red Team: {red_team['score']}/100 ({red_team['band']})",
                       f"{red_team['flagged_bullets']} of {red_team['total_bullets']} bullet(s) flagged", ""]
     for f in red_team["findings"]:
@@ -179,4 +183,4 @@ def build_package(job, jd_text, profile, base_dir="applications",
 
     return {"folder": out_dir, "files": files, "fit": fit,
             "ats": report, "integrity": integrity, "red_team": red_team,
-            "errors": errors, "meta": meta}
+            "version_diff": version_diff, "errors": errors, "meta": meta}
