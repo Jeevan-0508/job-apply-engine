@@ -2,10 +2,22 @@
 Tests for Job Ingestion 2.0: the status enum, source connectors' status
 reporting, and (once added) Greenhouse/Lever, role aliasing and dedup.
 """
+import pytest
 import requests
 
+from engine import cache
 from engine.search import status as status_mod
 from engine.search import arbeitsagentur, linkedin_search
+
+
+@pytest.fixture(autouse=True)
+def _clear_shared_cache():
+    """Greenhouse/Lever board fetches are cached (engine/cache.py) to avoid
+    re-fetching per role-alias query. That cache is process-global, so
+    tests reusing the same slug must not see another test's cached result."""
+    cache.clear()
+    yield
+    cache.clear()
 
 
 class FakeResponse:
@@ -300,3 +312,64 @@ def test_aggregator_reports_problem_status_distinct_from_empty(monkeypatch):
                                     enabled_sources=["Arbeitsagentur", "LinkedIn"], expand_roles=False)
     assert result["source_status"]["Arbeitsagentur"] == status_mod.BLOCKED
     assert result["source_status"]["LinkedIn"] == status_mod.EMPTY
+
+
+def test_dedupe_ats_id_takes_priority_over_differing_links():
+    # Same Greenhouse posting, but its link changed (e.g. title slug in the
+    # URL updated) -- the id is the more reliable identifier and should win.
+    jobs = [
+        {"source": "Greenhouse", "source_id": "555", "title": "Risk Manager",
+         "company": "acme", "location": "Berlin", "link": "https://acme.com/jobs/risk-manager-old"},
+        {"source": "Greenhouse", "source_id": "555", "title": "Risk Manager",
+         "company": "acme", "location": "Berlin", "link": "https://acme.com/jobs/risk-manager-new"},
+    ]
+    merged = dedupe.merge(jobs)
+    assert len(merged) == 1
+
+
+def test_dedupe_ats_id_never_merges_across_different_ids_even_with_same_link_path():
+    jobs = [
+        {"source": "Greenhouse", "source_id": "111", "title": "Risk Manager",
+         "company": "acme", "location": "Berlin", "link": "https://acme.com/jobs/search?gh_jid=111"},
+        {"source": "Greenhouse", "source_id": "222", "title": "Risk Manager",
+         "company": "acme", "location": "Berlin", "link": "https://acme.com/jobs/search?gh_jid=222"},
+    ]
+    merged = dedupe.merge(jobs)
+    assert len(merged) == 2
+
+
+def test_dedupe_id_tier_is_only_trusted_for_allow_listed_sources():
+    # A source not in ID_TRUSTED_SOURCES setting a same-named field must not
+    # be trusted as a hard identifier -- falls through to link/company+title.
+    jobs = [
+        {"source": "LinkedIn", "source_id": "1", "title": "Risk Manager",
+         "company": "Acme", "location": "Berlin", "link": "https://x.co/a"},
+        {"source": "LinkedIn", "source_id": "1", "title": "Fraud Analyst",
+         "company": "Globex", "location": "Munich", "link": "https://x.co/b"},
+    ]
+    merged = dedupe.merge(jobs)
+    assert len(merged) == 2
+
+
+def test_greenhouse_board_is_fetched_once_across_repeated_calls(monkeypatch):
+    calls = {"n": 0}
+
+    def fake_get(*a, **k):
+        calls["n"] += 1
+        return FakeResponse({"jobs": [{"id": 1, "title": "Risk Manager",
+                                        "location": {"name": "Berlin"},
+                                        "absolute_url": "https://x.co/1"}]})
+    monkeypatch.setattr(greenhouse.requests, "get", fake_get)
+
+    greenhouse.search("Risk Manager", "", slugs=["acme"])
+    greenhouse.search("Enterprise Risk Manager", "", slugs=["acme"])
+    greenhouse.search("Operational Risk Manager", "", slugs=["acme"])
+    assert calls["n"] == 1, "board should be fetched once and reused, not once per query"
+
+
+def test_greenhouse_job_carries_source_id(monkeypatch):
+    monkeypatch.setattr(greenhouse.requests, "get", lambda *a, **k: FakeResponse({"jobs": [
+        {"id": 987654, "title": "Risk Manager", "location": {"name": "Berlin"},
+         "absolute_url": "https://x.co/1"}]}))
+    result = greenhouse.search("Risk Manager", "", slugs=["acme"])
+    assert result["jobs"][0]["source_id"] == "987654"

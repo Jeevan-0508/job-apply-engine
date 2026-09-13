@@ -16,6 +16,8 @@ import json
 import os
 from datetime import date, datetime, timedelta
 
+from engine.dedupe import normalize_link
+
 STORE = os.path.join("data", "pipeline.json")
 
 STATUSES = ["Shortlisted", "Package built", "Applied", "Interview",
@@ -30,8 +32,18 @@ def _now():
 
 
 def job_id(job):
-    """Stable id for a posting. The link is the only reliable unique field."""
-    link = (job.get("link") or "").strip().lower()
+    """Stable id for a posting, for the pipeline store specifically.
+
+    Kept intentionally in its own bare format (no "link:"/"ctl:" prefix)
+    rather than reusing engine.dedupe.dedupe_key wholesale: this id gets
+    written into data/pipeline.json on disk, and changing its format would
+    silently orphan every entry a user already has locally (a repeat
+    search would stop recognizing an already-shortlisted job as known).
+    It shares dedupe's link normalization -- fragment/trailing-slash
+    stripped, query string kept intact -- so the two never quietly
+    disagree about what counts as "the same link".
+    """
+    link = normalize_link(job.get("link"))
     if link:
         return link
     return f"{(job.get('company') or '').lower()}|{(job.get('title') or '').lower()}"

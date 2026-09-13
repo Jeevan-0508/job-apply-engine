@@ -5,15 +5,43 @@ Docs: https://github.com/lever/postings-api
 
 Same shape as Greenhouse: no cross-company keyword search exists publicly,
 so this filters the known companies' (config/companies.py) postings by
-query/location client-side.
+query/location client-side, and fetches each board once per short TTL
+(engine/cache.py) rather than once per role-alias query variant.
 """
 import requests
 
+from engine import cache
 from engine.search import status as status_mod
 from engine.search.greenhouse import _matches
 
 BASE_URL = "https://api.lever.co/v0/postings/{slug}"
 HEADERS = {"User-Agent": "Mozilla/5.0"}
+BOARD_CACHE_TTL = 600  # seconds
+
+
+def _fetch_board(slug):
+    cache_key = f"lever:{slug}"
+    cached = cache.get(cache_key, BOARD_CACHE_TTL)
+    if cached is not None:
+        return cached
+
+    url = BASE_URL.format(slug=slug)
+    resp = requests.get(url, headers=HEADERS, params={"mode": "json"}, timeout=15)
+    resp.raise_for_status()
+    jobs = []
+    for item in resp.json():
+        jobs.append({
+            "source": "Lever",
+            "source_id": str(item.get("id", "")),
+            "title": item.get("text") or "",
+            "company": slug,
+            "location": (item.get("categories") or {}).get("location", ""),
+            "link": item.get("hostedUrl", ""),
+            "snippet": "",
+            "posted": item.get("createdAt", ""),
+        })
+    cache.set(cache_key, jobs)
+    return jobs
 
 
 def search(query, location="", limit=25, slugs=None):
@@ -26,29 +54,16 @@ def search(query, location="", limit=25, slugs=None):
     jobs = []
     problems = []
     for slug in slugs:
-        url = BASE_URL.format(slug=slug)
         try:
-            resp = requests.get(url, headers=HEADERS, params={"mode": "json"}, timeout=15)
-            resp.raise_for_status()
-            data = resp.json()
+            board_jobs = _fetch_board(slug)
         except Exception as e:
             problems.append((slug, status_mod.classify_http_error(e), str(e)))
             continue
 
-        for item in data:
-            title = item.get("text") or ""
-            loc = (item.get("categories") or {}).get("location", "")
-            if not _matches(title, loc, query, location):
+        for item in board_jobs:
+            if not _matches(item["title"], item["location"], query, location):
                 continue
-            jobs.append({
-                "source": "Lever",
-                "title": title,
-                "company": slug,
-                "location": loc,
-                "link": item.get("hostedUrl", ""),
-                "snippet": "",
-                "posted": item.get("createdAt", ""),
-            })
+            jobs.append(item)
             if len(jobs) >= limit:
                 break
 
