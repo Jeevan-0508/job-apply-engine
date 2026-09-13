@@ -104,17 +104,37 @@ def score_text(jd_text, profile, title=""):
     }
 
 
-def score_job(job, profile, description=None):
-    """Score a search result, using the full description when one is available."""
+BASIS_LABELS = {
+    "FULL": "full description",
+    "PARTIAL": "partial description -- treat the score as a lower-confidence estimate",
+    "TITLE_ONLY": "title only -- the description could not be read; fetch it for a real score",
+    "UNAVAILABLE": "title only -- no link was available to fetch a description from",
+}
+
+
+def score_job(job, profile, description=None, description_status=None):
+    """Score a search result, using the full description when one is available.
+
+    description_status (FULL/PARTIAL/TITLE_ONLY/UNAVAILABLE, from
+    engine.search.job_detail.classify) drives the reported basis so a
+    thin, hard-won 200-character description is never presented with the
+    same confidence as a real one. Falls back to a length heuristic if
+    the caller doesn't have a status yet, so this stays compatible with
+    callers that only pass a description string.
+    """
     title = (job or {}).get("title", "")
     if description and len(description) >= 200:
         result = score_text(description, profile, title=title)
-        result["basis"] = "full description"
+        basis_key = description_status or ("FULL" if len(description) >= 600 else "PARTIAL")
+        result["basis"] = BASIS_LABELS.get(basis_key, "full description")
+        result["description_status"] = basis_key
         return result
 
     fallback = " ".join(filter(None, [job.get("snippet"), job.get("company")]))
     result = score_text(fallback, profile, title=title)
-    result["basis"] = "title only -- fetch the description for a real score"
+    basis_key = description_status or "TITLE_ONLY"
+    result["basis"] = BASIS_LABELS.get(basis_key, "title only -- fetch the description for a real score")
+    result["description_status"] = basis_key
     return result
 
 

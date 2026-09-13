@@ -5,6 +5,8 @@ reporting, and (once added) Greenhouse/Lever, role aliasing and dedup.
 import pytest
 import requests
 
+from fixtures import PROFILE
+
 from engine import cache
 from engine.search import status as status_mod
 from engine.search import arbeitsagentur, linkedin_search
@@ -373,3 +375,49 @@ def test_greenhouse_job_carries_source_id(monkeypatch):
          "absolute_url": "https://x.co/1"}]}))
     result = greenhouse.search("Risk Manager", "", slugs=["acme"])
     assert result["jobs"][0]["source_id"] == "987654"
+
+
+from engine.search import job_detail
+
+
+def test_description_classify_full_partial_title_only_unavailable():
+    assert job_detail.classify("x" * 700, has_link=True) == job_detail.FULL
+    assert job_detail.classify("x" * 300, has_link=True) == job_detail.PARTIAL
+    assert job_detail.classify("short", has_link=True) == job_detail.TITLE_ONLY
+    assert job_detail.classify("", has_link=False) == job_detail.UNAVAILABLE
+
+
+def test_fetch_description_caches_and_does_not_refetch(monkeypatch):
+    calls = {"n": 0}
+
+    def fake_get(url, headers=None, timeout=None):
+        calls["n"] += 1
+        html = "<article>" + ("Risk management responsibilities. " * 40) + "</article>"
+        return FakeResponse(text=html)
+
+    monkeypatch.setattr(job_detail.requests, "get", fake_get)
+    job = {"source": "Generic", "link": "https://acme.com/jobs/risk-manager"}
+
+    first = job_detail.fetch_description(job)
+    second = job_detail.fetch_description(job)
+
+    assert calls["n"] == 1, "second fetch of the same job should hit the cache, not the network"
+    assert first["cached"] is False
+    assert second["cached"] is True
+    assert first["hash"] == second["hash"]
+    assert first["status"] == job_detail.FULL
+
+
+def test_fetch_description_no_link_is_unavailable():
+    result = job_detail.fetch_description({"source": "Generic", "link": ""})
+    assert result["status"] == job_detail.UNAVAILABLE
+    assert result["text"] == ""
+
+
+def test_score_job_reports_description_status_for_partial_description():
+    from engine.match import score_job
+    job = {"title": "Risk Manager", "company": "Acme"}
+    description = "Risk management and fraud investigation. " * 6  # ~230 chars, PARTIAL range
+    result = score_job(job, PROFILE, description=description, description_status=job_detail.PARTIAL)
+    assert result["description_status"] == job_detail.PARTIAL
+    assert "lower-confidence" in result["basis"]

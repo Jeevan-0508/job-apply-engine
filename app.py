@@ -187,11 +187,13 @@ with tab1:
         for index, job in enumerate(jobs, start=1):
             description = ""
             detail_error = None
+            description_status = None
             if deep:
                 detail = fetch_description(job)
                 description = detail["text"]
                 detail_error = detail["error"]
-            fit = score_job(job, PROFILE, description)
+                description_status = detail["status"]
+            fit = score_job(job, PROFILE, description, description_status=description_status)
             scored.append({"job": job, "fit": fit, "description": description,
                            "detail_error": detail_error,
                            "seen_before": tracker.job_id(job) in known})
