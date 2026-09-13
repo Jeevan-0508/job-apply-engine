@@ -34,6 +34,62 @@ def analyze_jd(jd_text):
     return dict(sorted(signal.items(), key=lambda x: (-x[1], x[0])))
 
 
+MUST, PREFERRED, STANDARD = "MUST", "PREFERRED", "STANDARD"
+_SEVERITY_RANK = {MUST: 2, PREFERRED: 1, STANDARD: 0}
+
+_MUST_RE = re.compile(
+    r"\b(must[- ]have|required?|requirement|essential|mandatory|non[- ]negotiable|"
+    r"erforderlich|zwingend|voraussetzung|muss(?:en)?)\b",
+    re.IGNORECASE,
+)
+_PREFERRED_RE = re.compile(
+    r"\b(preferred|nice[- ]to[- ]have|a plus|bonus|advantageous|ideally|desirable|"
+    r"w\u00fcnschenswert|von vorteil|bevorzugt)\b",
+    re.IGNORECASE,
+)
+
+
+def _sentences(text):
+    """Split on sentence-ish boundaries. Good enough for tagging which
+    sentence a skill mention sits in -- this never needs to be a real
+    sentence tokenizer, just a way to keep a severity word from bleeding
+    into an unrelated skill three sentences away."""
+    return re.split(r"(?<=[.!?\n])\s+", text or "")
+
+
+def analyze_severity(jd_text):
+    """Per-canonical-skill severity: MUST / PREFERRED / STANDARD.
+
+    A skill is MUST if it shares a sentence with must-have language
+    ("required", "erforderlich", ...), PREFERRED if it shares a sentence
+    with nice-to-have language ("preferred", "wünschenswert", ...), and
+    STANDARD otherwise -- present in the JD, but without a stated severity
+    either way, which is the common case and is not itself a signal of
+    low importance. If the same skill is tagged differently across
+    sentences (mentioned once as a must, once as a nice-to-have example),
+    the strongest tag wins -- a single "must have X" is not cancelled out
+    by an unrelated "nice to have" sentence elsewhere in the same posting.
+
+    This never invents a severity: with no severity language anywhere
+    near a skill, it stays STANDARD rather than being guessed as MUST.
+    """
+    severity = {}
+    for sentence in _sentences(jd_text):
+        found = canonical_skills(sentence)
+        if not found:
+            continue
+        if _MUST_RE.search(sentence):
+            tag = MUST
+        elif _PREFERRED_RE.search(sentence):
+            tag = PREFERRED
+        else:
+            tag = STANDARD
+        for skill in found:
+            if skill not in severity or _SEVERITY_RANK[tag] > _SEVERITY_RANK[severity[skill]]:
+                severity[skill] = tag
+    return severity
+
+
 def canonical_skills(text):
     """Canonical vocabulary names present in one free-text string.
 

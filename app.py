@@ -37,6 +37,8 @@ from engine.search.deeplinks import build as build_deeplinks
 from engine.search.job_detail import fetch_description
 from engine import freshness
 from engine.job_quality import score_job_quality
+from engine.jd_analyzer import analyze_severity
+from engine.readiness import compute_readiness
 from engine.tailor import tailor_lines
 
 st.set_page_config(page_title="Job Apply Engine", layout="wide")
@@ -200,10 +202,13 @@ with tab1:
             quality = score_job_quality(job, description=description,
                                         description_status=description_status,
                                         freshness_score=fresh_info.get("score"))
+            severity = analyze_severity(description) if description else {}
+            readiness = compute_readiness(fit, severity=severity, quality_score=quality.get("score"))
             scored.append({"job": job, "fit": fit, "description": description,
                            "detail_error": detail_error,
                            "freshness": fresh_info,
                            "quality": quality,
+                           "readiness": readiness,
                            "seen_before": tracker.job_id(job) in known})
             progress.progress(index / max(len(jobs), 1),
                               text=f"Scoring {index}/{len(jobs)}: {job.get('title','')[:50]}")
@@ -272,6 +277,11 @@ with tab1:
                            f"{job.get('posted','')} · scored on {fit['basis']}{fresh_bit}{quality_bit}")
                 if quality.get("notes"):
                     st.caption("Listing quality notes: " + "; ".join(quality["notes"]))
+                readiness = row.get("readiness") or {}
+                if readiness:
+                    st.caption(f"Application readiness: {readiness['score']}/100 ({readiness['band']})")
+                    if readiness.get("missing_must_haves"):
+                        st.warning("Missing must-have requirement(s): " + ", ".join(readiness["missing_must_haves"]))
                 st.write(fit["verdict"])
                 if fit["signal"]:
                     with st.popover("Why you match / why you do not"):
