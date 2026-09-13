@@ -117,6 +117,25 @@ def show_integrity_report(report):
         st.markdown(f"⚠️ {u}")
 
 
+def show_red_team_report(report):
+    """Persuasiveness pass, distinct from CV Integrity above -- everything
+    here can be 100% true and still flagged, and nothing here ever blocks
+    an export."""
+    if report is None:
+        return
+    st.markdown(f"**CV Red Team: {report['score']}/100 ({report['band']})**")
+    st.caption(
+        f"{report['flagged_bullets']} of {report['total_bullets']} bullet(s) flagged for "
+        "craft, not truth -- unquantified impact, weak openers, filler phrasing, length."
+    )
+    st.progress(min(report["score"], 100) / 100)
+    for f in report["findings"]:
+        label = f'"{f["bullet"][:100]}"' if f["bullet"] else f["where"]
+        st.markdown(f"**{f['where']}** — {label}")
+        for issue in f["issues"]:
+            st.caption(f"  ⚠ {issue}")
+
+
 def offer_downloads(files, key):
     labels = [("cv_pdf", "CV .pdf"), ("cv_docx", "CV .docx"),
               ("letter_pdf", "Letter .pdf"), ("letter_docx", "Letter .docx"),
@@ -250,9 +269,10 @@ with tab1:
                     integrity_note = f" · Integrity {outcome['integrity']['score']}/100"
                     if outcome["integrity"]["blocked"]:
                         integrity_note += " — EXPORT WITHHELD"
+                red_team_note = f" · Red Team {outcome['red_team']['score']}/100" if outcome.get("red_team") else ""
                 st.success(f"{row['job'].get('company','')} — {outcome['folder']} "
                            f"(ATS {outcome['ats']['score'] if outcome['ats'] else 'n/a'}/100"
-                           f"{integrity_note})")
+                           f"{integrity_note}{red_team_note})")
             st.rerun()
 
         for index, row in enumerate(scored):
@@ -332,6 +352,8 @@ with tab1:
                             show_ats_report(outcome["ats"])
                         if outcome["integrity"]:
                             show_integrity_report(outcome["integrity"])
+                        if outcome.get("red_team"):
+                            show_red_team_report(outcome["red_team"])
 
                 if row["description"]:
                     with st.popover("Read the description"):

@@ -22,6 +22,7 @@ from engine.cover_letter import (build_cover_letter_docx, build_cover_letter_pdf
 from engine.cv_builder import build_cv_docx, build_cv_pdf, tailor_profile
 from engine.interview_prep import save_prep_notes_docx, save_prep_notes_txt
 from engine.match import score_text
+from engine.cv_redteam import red_team_cv
 
 
 def safe_name(value, fallback="Unknown"):
@@ -52,6 +53,7 @@ def build_package(job, jd_text, profile, base_dir="applications",
 
     fit = score_text(jd_text, profile, title=role)
     tailored = tailor_profile(profile, fit["signal"])
+    red_team = red_team_cv(tailored)
 
     files = {}
     errors = []
@@ -104,6 +106,8 @@ def build_package(job, jd_text, profile, base_dir="applications",
         "integrity_score": integrity["score"] if integrity else None,
         "integrity_blocked": integrity["blocked"] if integrity else None,
         "integrity_unsupported": integrity["unsupported"] if integrity else [],
+        "red_team_score": red_team["score"],
+        "red_team_band": red_team["band"],
         "cv_layout": layout,
         "letter_language": language,
         "errors": errors,
@@ -158,5 +162,21 @@ def build_package(job, jd_text, profile, base_dir="applications",
                    ats_score=report["score"] if report else None,
                    jd_chars=len(jd_text or ""))
 
+    red_team_lines = [f"CV Red Team: {red_team['score']}/100 ({red_team['band']})",
+                      f"{red_team['flagged_bullets']} of {red_team['total_bullets']} bullet(s) flagged", ""]
+    for f in red_team["findings"]:
+        where = f["where"]
+        if f["bullet"]:
+            snippet = f["bullet"][:80]
+            red_team_lines.append(f"[{where}] {snippet!r}")
+        else:
+            red_team_lines.append(f"[{where}]")
+        red_team_lines += [f"    - {i}" for i in f["issues"]]
+    red_team_path = os.path.join(out_dir, "RedTeam_report.txt")
+    with open(red_team_path, "w", encoding="utf-8") as f:
+        f.write("\n".join(red_team_lines))
+    files["red_team_report"] = red_team_path
+
     return {"folder": out_dir, "files": files, "fit": fit,
-            "ats": report, "integrity": integrity, "errors": errors, "meta": meta}
+            "ats": report, "integrity": integrity, "red_team": red_team,
+            "errors": errors, "meta": meta}
