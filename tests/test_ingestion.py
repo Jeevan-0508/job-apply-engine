@@ -185,11 +185,36 @@ def test_dedupe_merges_on_shared_link_only():
         {"source": "Arbeitsagentur", "title": "Risk Manager", "company": "Acme",
          "location": "Berlin", "link": "https://x.co/1"},
         {"source": "LinkedIn", "title": "Senior Risk Manager (2026)", "company": "ACME GmbH",
-         "location": "Berlin, DE", "link": "https://x.co/1?ref=abc"},
+         "location": "Berlin, DE", "link": "https://x.co/1"},
     ]
     merged = dedupe.merge(jobs)
     assert len(merged) == 1
     assert set(merged[0]["matched_sources"]) == {"Arbeitsagentur", "LinkedIn"}
+
+
+def test_dedupe_keeps_query_string_so_different_job_ids_never_collide():
+    # Real bug this guards against: Greenhouse's embedded-widget URLs put the
+    # job id in a query param (?gh_jid=...), not the path. Stripping the query
+    # string made two different postings collide on the same bare link.
+    jobs = [
+        {"source": "Greenhouse", "title": "Accounts Receivable Manager", "company": "stripe",
+         "location": "Bengaluru", "link": "https://stripe.com/jobs/search?gh_jid=1"},
+        {"source": "Greenhouse", "title": "AV Events Manager", "company": "stripe",
+         "location": "US-SF", "link": "https://stripe.com/jobs/search?gh_jid=2"},
+    ]
+    merged = dedupe.merge(jobs)
+    assert len(merged) == 2
+
+
+def test_dedupe_link_with_tracking_fragment_only_still_matches():
+    jobs = [
+        {"source": "Arbeitsagentur", "title": "Risk Manager", "company": "Acme",
+         "location": "Berlin", "link": "https://x.co/1#applynow"},
+        {"source": "LinkedIn", "title": "Risk Manager", "company": "Acme",
+         "location": "Berlin", "link": "https://x.co/1"},
+    ]
+    merged = dedupe.merge(jobs)
+    assert len(merged) == 1
 
 
 def test_dedupe_merges_on_exact_normalized_company_title_location_without_link():

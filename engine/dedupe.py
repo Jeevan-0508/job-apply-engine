@@ -25,8 +25,15 @@ def _normalize(text):
 
 
 def _normalize_link(link):
+    """Normalize a link for identity comparison. Deliberately keeps the
+    query string: some sources (e.g. Greenhouse's embedded-widget URLs)
+    put the actual job id in a query param like ?gh_jid=..., so stripping
+    it would make two different postings collide on the same bare path --
+    exactly the false-merge this module exists to prevent. Only the
+    fragment and a trailing slash, which are genuinely never
+    identifying, are removed."""
     link = (link or "").strip().lower()
-    link = link.split("?")[0].split("#")[0]
+    link = link.split("#")[0]
     if link.endswith("/"):
         link = link[:-1]
     return link
