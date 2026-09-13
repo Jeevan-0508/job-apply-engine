@@ -24,6 +24,8 @@ from engine.ats_check import audit_pdf
 from engine.cover_letter import build_cover_letter_docx, build_cover_letter_pdf
 from engine.cv_builder import (build_cv_docx, build_cv_pdf, build_from_flat_lines,
                                missing_month_precision, tailor_profile)
+from engine.evidence import why_you_dont, why_you_match
+from engine.integrity import check_integrity
 from engine.interview_prep import save_prep_notes_docx, save_prep_notes_txt
 from engine.jd_analyzer import analyze_jd
 from engine.match import demand_report, score_job
@@ -85,6 +87,29 @@ def show_ats_report(report):
     st.progress(min(report["score"], 100) / 100)
     for name, check in report["checks"].items():
         st.markdown(f"{ATS_ICON.get(check['status'], '•')} **{name.replace('_', ' ')}** — {check['detail']}")
+
+
+def show_integrity_report(report):
+    if report is None:
+        return
+    if report["blocked"]:
+        st.error(
+            f"**CV Integrity: {report['score']}/100 — export withheld.** "
+            "This CV makes at least one claim that could not be traced back to "
+            "config/profile.py. The zip was not written; fix the claim below and rebuild."
+        )
+    else:
+        st.markdown(f"**CV Integrity: {report['score']}/100**")
+        st.caption(
+            "Re-reads the rendered CV and checks every claim — employment history, bullets, "
+            "skills, certifications, education, languages — against your stored profile, not "
+            "the code that built it."
+        )
+    st.progress(min(report["score"], 100) / 100)
+    for name, check in report["checks"].items():
+        st.markdown(f"{ATS_ICON.get(check['status'], '•')} **{name.replace('_', ' ')}** — {check['detail']}")
+    for u in report["unsupported"]:
+        st.markdown(f"⚠️ {u}")
 
 
 def offer_downloads(files, key):
@@ -185,8 +210,14 @@ with tab1:
                 with st.spinner(f"Building {row['job'].get('company','')}..."):
                     outcome = build_package(row["job"], row["description"], PROFILE,
                                             layout=layout, fit_pages=fit_pages, language=language)
+                integrity_note = ""
+                if outcome["integrity"]:
+                    integrity_note = f" · Integrity {outcome['integrity']['score']}/100"
+                    if outcome["integrity"]["blocked"]:
+                        integrity_note += " — EXPORT WITHHELD"
                 st.success(f"{row['job'].get('company','')} — {outcome['folder']} "
-                           f"(ATS {outcome['ats']['score'] if outcome['ats'] else 'n/a'}/100)")
+                           f"(ATS {outcome['ats']['score'] if outcome['ats'] else 'n/a'}/100"
+                           f"{integrity_note})")
             st.rerun()
 
         for index, row in enumerate(scored):
@@ -200,8 +231,25 @@ with tab1:
                 st.caption(f"{job.get('source','')} · {job.get('location','')} · "
                            f"{job.get('posted','')} · scored on {fit['basis']}")
                 st.write(fit["verdict"])
-                if fit["missing"]:
-                    st.caption("Asked for, not evidenced in your profile: " + ", ".join(fit["missing"]))
+                if fit["signal"]:
+                    with st.popover("Why you match / why you do not"):
+                        matches = why_you_match(PROFILE, fit["signal"])
+                        gaps = why_you_dont(PROFILE, fit["signal"])
+                        if matches:
+                            st.markdown("**✓ Why you match**")
+                            for m in matches[:6]:
+                                evidence_text = m["evidence"][0]["text"]
+                                st.caption(f"**{m['skill']}** — \"{evidence_text[:140]}\" "
+                                           f"({m['evidence'][0]['source']})")
+                        if gaps:
+                            st.markdown("**⚠ Missing evidence**")
+                            for g in gaps[:6]:
+                                if g["related_evidence"]:
+                                    rel = g["related_evidence"][0]
+                                    st.caption(f"**{g['skill']}** — no direct evidence, but related: "
+                                               f"\"{rel['text'][:120]}\" ({rel['source']})")
+                                else:
+                                    st.caption(f"**{g['skill']}** — nothing in your profile evidences this")
                 if row["detail_error"]:
                     st.caption(f"Description unavailable: {row['detail_error']}")
 
@@ -224,9 +272,14 @@ with tab1:
                         st.success(f"Written to {outcome['folder']}")
                         for message in outcome["errors"]:
                             st.warning(message)
+                        if outcome["integrity"] and outcome["integrity"]["blocked"]:
+                            st.warning("Zip withheld — see CV Integrity below before sending "
+                                       "the CV/DOCX manually.")
                         offer_downloads(outcome["files"], f"dl_{index}")
                         if outcome["ats"]:
                             show_ats_report(outcome["ats"])
+                        if outcome["integrity"]:
+                            show_integrity_report(outcome["integrity"])
 
                 if row["description"]:
                     with st.popover("Read the description"):
@@ -315,6 +368,9 @@ with tab2:
                     st.write(", ".join(jd_signal.keys()) or "No skill_map.py matches found in this JD.")
                 st.divider()
                 show_ats_report(audit_pdf(pdf_path, jd_signal))
+                if profile_is_filled(PROFILE):
+                    st.divider()
+                    show_integrity_report(check_integrity(pdf_path, tailored, PROFILE, jd_signal=jd_signal))
                 st.session_state["last_jd_signal"] = jd_signal
                 st.session_state["last_company"] = company
                 st.session_state["last_role"] = role
