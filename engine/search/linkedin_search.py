@@ -8,6 +8,8 @@ import time
 import requests
 from bs4 import BeautifulSoup
 
+from engine.search import status as status_mod
+
 BASE_URL = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
 HEADERS = {"User-Agent": "Mozilla/5.0"}
 
@@ -27,10 +29,12 @@ def search(query, location="Germany", limit=25):
                 # Partial results are more useful than an empty list plus a stack trace.
                 note = ("LinkedIn rate-limited the request (HTTP 429). Showing what came back; "
                         "wait a minute and search again, or rely on Arbeitsagentur.")
-                page = None
-            if page is not None:
-                return {"jobs": jobs, "error": page["error"], "note": None, "total": len(jobs)}
-            return {"jobs": jobs, "error": None, "note": note, "total": len(jobs)}
+                rl_status = status_mod.PARTIAL if jobs else status_mod.RATE_LIMITED
+                return {"jobs": jobs, "error": None, "note": note, "total": len(jobs), "status": rl_status}
+            return {
+                "jobs": jobs, "error": page["error"], "note": None, "total": len(jobs),
+                "status": status_mod.classify_http_error(page["error"]),
+            }
         new_cards = [j for j in page["jobs"] if j["link"] not in seen]
         if not new_cards:
             break
@@ -38,7 +42,8 @@ def search(query, location="Germany", limit=25):
             seen.add(j["link"])
         jobs.extend(new_cards)
         start += 10
-    return {"jobs": jobs[:limit], "error": None, "note": None, "total": len(jobs)}
+    result_status = status_mod.SUCCESS if jobs else status_mod.EMPTY
+    return {"jobs": jobs[:limit], "error": None, "note": None, "total": len(jobs), "status": result_status}
 
 
 def _fetch_page(query, location, start):

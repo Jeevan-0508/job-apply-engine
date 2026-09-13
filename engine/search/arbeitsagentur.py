@@ -14,6 +14,8 @@ the live service:
 import urllib.parse
 import requests
 
+from engine.search import status as status_mod
+
 BASE_URL = "https://rest.arbeitsagentur.de/jobboerse/jobsuche-service/pc/v6/jobs"
 HEADERS = {
     "X-API-Key": "jobboerse-jobsuche",
@@ -75,7 +77,10 @@ def search(query, location="", limit=25, radius_km=50):
         resp.raise_for_status()
         data = resp.json()
     except Exception as e:
-        return {"jobs": [], "error": f"Arbeitsagentur: {e}", "note": note, "total": 0}
+        return {
+            "jobs": [], "error": f"Arbeitsagentur: {e}", "note": note, "total": 0,
+            "status": status_mod.classify_http_error(e),
+        }
 
     jobs = []
     for item in data.get("ergebnisliste", []):
@@ -101,7 +106,11 @@ def search(query, location="", limit=25, radius_km=50):
         note = (f'Arbeitsagentur returned nothing for "{api_loc}". It only accepts German '
                 f'place names -- try the German spelling, or clear the field to search all of Germany.')
 
-    return {"jobs": jobs, "error": None, "note": note, "total": data.get("maxErgebnisse") or len(jobs)}
+    result_status = status_mod.SUCCESS if jobs else status_mod.EMPTY
+    return {
+        "jobs": jobs, "error": None, "note": note, "total": data.get("maxErgebnisse") or len(jobs),
+        "status": result_status,
+    }
 
 
 def get_job_description(refnr):
