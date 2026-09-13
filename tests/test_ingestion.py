@@ -167,3 +167,111 @@ def test_config_companies_slugs_are_nonempty_lists():
     from config.companies import GREENHOUSE_SLUGS, LEVER_SLUGS
     assert isinstance(GREENHOUSE_SLUGS, list) and len(GREENHOUSE_SLUGS) > 0
     assert isinstance(LEVER_SLUGS, list) and len(LEVER_SLUGS) > 0
+
+
+from engine import dedupe
+from engine.search import aggregator, role_aliases
+
+
+def _fake_source(jobs_by_query, result_status=status_mod.SUCCESS):
+    def fn(query, location, limit):
+        jobs = jobs_by_query.get(query, [])
+        return {"jobs": jobs, "error": None, "note": None, "total": len(jobs), "status": result_status if jobs else status_mod.EMPTY}
+    return fn
+
+
+def test_dedupe_merges_on_shared_link_only():
+    jobs = [
+        {"source": "Arbeitsagentur", "title": "Risk Manager", "company": "Acme",
+         "location": "Berlin", "link": "https://x.co/1"},
+        {"source": "LinkedIn", "title": "Senior Risk Manager (2026)", "company": "ACME GmbH",
+         "location": "Berlin, DE", "link": "https://x.co/1?ref=abc"},
+    ]
+    merged = dedupe.merge(jobs)
+    assert len(merged) == 1
+    assert set(merged[0]["matched_sources"]) == {"Arbeitsagentur", "LinkedIn"}
+
+
+def test_dedupe_merges_on_exact_normalized_company_title_location_without_link():
+    jobs = [
+        {"source": "Greenhouse", "title": "Risk Manager", "company": "Acme", "location": "Berlin"},
+        {"source": "Lever", "title": "risk manager", "company": "ACME", "location": "berlin"},
+    ]
+    merged = dedupe.merge(jobs)
+    assert len(merged) == 1
+
+
+def test_dedupe_never_merges_on_title_similarity_alone():
+    jobs = [
+        {"source": "Greenhouse", "title": "Risk Manager", "company": "Acme", "location": "Berlin"},
+        {"source": "Lever", "title": "Risk Management Lead", "company": "Acme", "location": "Berlin"},
+    ]
+    merged = dedupe.merge(jobs)
+    assert len(merged) == 2
+
+
+def test_dedupe_different_companies_same_title_stay_separate():
+    jobs = [
+        {"source": "Greenhouse", "title": "Risk Manager", "company": "Acme", "location": "Berlin"},
+        {"source": "Lever", "title": "Risk Manager", "company": "Globex", "location": "Berlin"},
+    ]
+    merged = dedupe.merge(jobs)
+    assert len(merged) == 2
+
+
+def test_role_alias_expand_returns_configured_aliases():
+    aliases = role_aliases.expand("Risk Manager")
+    assert "Enterprise Risk Manager" in aliases
+
+
+def test_role_alias_expand_unknown_role_returns_empty():
+    assert role_aliases.expand("Underwater Basket Weaver") == []
+
+
+def test_role_alias_relevance_keeps_overlapping_titles():
+    assert role_aliases.is_relevant("Risk Manager", "Enterprise Risk Lead") is True
+
+
+def test_role_alias_relevance_rejects_unrelated_titles():
+    assert role_aliases.is_relevant("Risk Manager", "Compliance Officer") is False
+
+
+def test_aggregator_expands_roles_and_filters_by_relevance(monkeypatch):
+    monkeypatch.setattr(aggregator, "SOURCES", {
+        "Arbeitsagentur": _fake_source({
+            "Risk Manager": [{"source": "Arbeitsagentur", "title": "Risk Manager", "company": "Acme", "location": "Berlin"}],
+            "Enterprise Risk Manager": [{"source": "Arbeitsagentur", "title": "Enterprise Risk Manager", "company": "Beta", "location": "Berlin"}],
+            "Operational Risk Manager": [{"source": "Arbeitsagentur", "title": "Software Engineer", "company": "Gamma", "location": "Berlin"}],
+            "Risk & Compliance Manager": [],
+        }),
+    })
+    result = aggregator.search_all("Risk Manager", "Berlin", enabled_sources=["Arbeitsagentur"])
+    titles = [j["title"] for j in result["jobs"]]
+    assert "Risk Manager" in titles
+    assert "Enterprise Risk Manager" in titles
+    assert "Software Engineer" not in titles  # alias hit, but irrelevant to the original query
+
+
+def test_aggregator_deduplicates_across_sources(monkeypatch):
+    shared = {"source": "Arbeitsagentur", "title": "Risk Manager", "company": "Acme",
+              "location": "Berlin", "link": "https://x.co/1"}
+    shared_other_source = dict(shared, source="LinkedIn")
+    monkeypatch.setattr(aggregator, "SOURCES", {
+        "Arbeitsagentur": lambda q, l, n: {"jobs": [shared], "error": None, "note": None, "total": 1, "status": status_mod.SUCCESS},
+        "LinkedIn": lambda q, l, n: {"jobs": [shared_other_source], "error": None, "note": None, "total": 1, "status": status_mod.SUCCESS},
+    })
+    result = aggregator.search_all("Risk Manager", "Berlin",
+                                    enabled_sources=["Arbeitsagentur", "LinkedIn"], expand_roles=False)
+    assert len(result["jobs"]) == 1
+    assert set(result["jobs"][0]["matched_sources"]) == {"Arbeitsagentur", "LinkedIn"}
+
+
+def test_aggregator_reports_problem_status_distinct_from_empty(monkeypatch):
+    monkeypatch.setattr(aggregator, "SOURCES", {
+        "Arbeitsagentur": lambda q, l, n: {"jobs": [], "error": "boom", "note": None, "total": 0, "status": status_mod.BLOCKED},
+        "LinkedIn": lambda q, l, n: {"jobs": [], "error": None, "note": None, "total": 0, "status": status_mod.EMPTY},
+    })
+    result = aggregator.search_all("Risk Manager", "Berlin",
+                                    enabled_sources=["Arbeitsagentur", "LinkedIn"], expand_roles=False)
+    assert result["source_status"]["Arbeitsagentur"] == status_mod.BLOCKED
+    assert result["source_status"]["LinkedIn"] == status_mod.EMPTY

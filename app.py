@@ -31,6 +31,7 @@ from engine.jd_analyzer import analyze_jd
 from engine.match import demand_report, score_job
 from engine.package import build_package
 from engine.resume_parser import extract_resume_sections
+from engine.search import status
 from engine.search.aggregator import search_all
 from engine.search.deeplinks import build as build_deeplinks
 from engine.search.job_detail import fetch_description
@@ -147,9 +148,11 @@ with tab1:
     col1, col2, col3 = st.columns([2, 1, 1])
     with col1:
         sources = st.multiselect(
-            "Sources", ["Arbeitsagentur", "LinkedIn"], default=["Arbeitsagentur", "LinkedIn"],
+            "Sources", ["Arbeitsagentur", "LinkedIn", "Greenhouse", "Lever"],
+            default=["Arbeitsagentur", "LinkedIn", "Greenhouse", "Lever"],
             help="Arbeitsagentur is Germany's official public jobs API — most stable. "
-                 "LinkedIn is fetched a page at a time and rate-limits if pushed.",
+                 "LinkedIn is fetched a page at a time and rate-limits if pushed. "
+                 "Greenhouse/Lever only cover the companies listed in config/companies.py.",
         )
     with col2:
         per_source = st.number_input("Results per source", 5, 50, 15, step=5)
@@ -168,6 +171,14 @@ with tab1:
             st.warning(message)
         for message in result["notes"]:
             st.info(message)
+        problem_sources = {
+            name: s for name, s in result.get("source_status", {}).items()
+            if s in status.PROBLEM_STATUSES
+        }
+        if problem_sources:
+            detail = ", ".join(f"{name} ({status.label(s)})" for name, s in problem_sources.items())
+            st.warning(f"Some sources did not complete a real search — treat their counts as "
+                       f"unknown, not zero: {detail}")
 
         jobs = result["jobs"]
         known = tracker.known_ids()
@@ -228,7 +239,9 @@ with tab1:
                 f"{icon} {fit['relevance']}% relevant · {fit['coverage']}% covered — "
                 f"{job.get('title','')} · {job.get('company','')}{flag}"
             ):
-                st.caption(f"{job.get('source','')} · {job.get('location','')} · "
+                found_on = job.get("matched_sources") or [job.get("source", "")]
+                source_label = ", ".join(dict.fromkeys(s for s in found_on if s))
+                st.caption(f"Found on: {source_label} · {job.get('location','')} · "
                            f"{job.get('posted','')} · scored on {fit['basis']}")
                 st.write(fit["verdict"])
                 if fit["signal"]:
