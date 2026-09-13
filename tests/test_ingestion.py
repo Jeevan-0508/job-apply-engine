@@ -101,3 +101,69 @@ def test_linkedin_rate_limited_with_no_jobs_yet(monkeypatch):
     result = linkedin_search.search("Risk Manager", "Berlin", limit=5)
     assert result["status"] == status_mod.RATE_LIMITED
     assert result["jobs"] == []
+
+
+from engine.search import greenhouse, lever
+
+
+def test_greenhouse_filters_by_query_and_location(monkeypatch):
+    data = {
+        "jobs": [
+            {"title": "Risk Manager", "location": {"name": "Berlin, Germany"},
+             "absolute_url": "https://job.co/1", "updated_at": "2026-09-01"},
+            {"title": "Software Engineer", "location": {"name": "Berlin, Germany"},
+             "absolute_url": "https://job.co/2", "updated_at": "2026-09-01"},
+        ]
+    }
+    monkeypatch.setattr(greenhouse.requests, "get", lambda *a, **k: FakeResponse(data))
+    result = greenhouse.search("Risk Manager", "Berlin", slugs=["acme"])
+    assert result["status"] == status_mod.SUCCESS
+    assert len(result["jobs"]) == 1
+    assert result["jobs"][0]["title"] == "Risk Manager"
+    assert result["jobs"][0]["source"] == "Greenhouse"
+
+
+def test_greenhouse_no_slugs_configured_is_unsupported():
+    result = greenhouse.search("Risk Manager", "Berlin", slugs=[])
+    assert result["status"] == status_mod.UNSUPPORTED
+    assert result["jobs"] == []
+
+
+def test_greenhouse_all_boards_unreachable_is_a_problem_status(monkeypatch):
+    def boom(*a, **k):
+        raise requests.exceptions.ConnectionError("nope")
+    monkeypatch.setattr(greenhouse.requests, "get", boom)
+    result = greenhouse.search("Risk Manager", "Berlin", slugs=["acme"])
+    assert result["status"] in status_mod.PROBLEM_STATUSES
+    assert result["error"] is not None
+
+
+def test_greenhouse_empty_when_no_matches(monkeypatch):
+    monkeypatch.setattr(greenhouse.requests, "get", lambda *a, **k: FakeResponse({"jobs": []}))
+    result = greenhouse.search("Risk Manager", "Berlin", slugs=["acme"])
+    assert result["status"] == status_mod.EMPTY
+
+
+def test_lever_filters_by_query_and_location(monkeypatch):
+    data = [
+        {"text": "Fraud Investigator", "categories": {"location": "Munich, Germany"},
+         "hostedUrl": "https://job.co/a", "createdAt": 1},
+        {"text": "Sales Rep", "categories": {"location": "Munich, Germany"},
+         "hostedUrl": "https://job.co/b", "createdAt": 1},
+    ]
+    monkeypatch.setattr(lever.requests, "get", lambda *a, **k: FakeResponse(data))
+    result = lever.search("Fraud", "Munich", slugs=["acme"])
+    assert result["status"] == status_mod.SUCCESS
+    assert len(result["jobs"]) == 1
+    assert result["jobs"][0]["source"] == "Lever"
+
+
+def test_lever_no_slugs_configured_is_unsupported():
+    result = lever.search("Risk", "Berlin", slugs=[])
+    assert result["status"] == status_mod.UNSUPPORTED
+
+
+def test_config_companies_slugs_are_nonempty_lists():
+    from config.companies import GREENHOUSE_SLUGS, LEVER_SLUGS
+    assert isinstance(GREENHOUSE_SLUGS, list) and len(GREENHOUSE_SLUGS) > 0
+    assert isinstance(LEVER_SLUGS, list) and len(LEVER_SLUGS) > 0
