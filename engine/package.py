@@ -17,6 +17,7 @@ import zipfile
 
 from engine import tracker
 from engine.ats_check import audit_pdf
+from engine.integrity import check_integrity
 from engine.cover_letter import (build_cover_letter_docx, build_cover_letter_pdf)
 from engine.cv_builder import build_cv_docx, build_cv_pdf, tailor_profile
 from engine.interview_prep import save_prep_notes_docx, save_prep_notes_txt
@@ -78,6 +79,13 @@ def build_package(job, jd_text, profile, base_dir="applications",
 
     report = audit_pdf(files["cv_pdf"], fit["signal"]) if files.get("cv_pdf") else None
 
+    integrity = None
+    if files.get("cv_pdf"):
+        try:
+            integrity = check_integrity(files["cv_pdf"], tailored, profile, jd_signal=fit["signal"])
+        except Exception as e:
+            errors.append(f"integrity: {type(e).__name__}: {e}")
+
     posting_path = os.path.join(out_dir, "posting.txt")
     with open(posting_path, "w", encoding="utf-8") as f:
         f.write(f"{role}\n{company}\n{job.get('location','')}\n{job.get('link','')}\n\n{jd_text}")
@@ -93,6 +101,9 @@ def build_package(job, jd_text, profile, base_dir="applications",
         "missing_skills": fit["missing"],
         "core_missing": fit["core_missing"],
         "ats_score": report["score"] if report else None,
+        "integrity_score": integrity["score"] if integrity else None,
+        "integrity_blocked": integrity["blocked"] if integrity else None,
+        "integrity_unsupported": integrity["unsupported"] if integrity else [],
         "cv_layout": layout,
         "letter_language": language,
         "errors": errors,
@@ -112,15 +123,35 @@ def build_package(job, jd_text, profile, base_dir="applications",
             f.write("\n".join(lines))
         files["ats_report"] = ats_path
 
+    if integrity:
+        lines = [f"CV Integrity: {integrity['score']}/100", ""]
+        for name, check in integrity["checks"].items():
+            icon = "PASS" if check["status"] == "pass" else "FAIL"
+            lines.append(f"[{icon}] {name.replace('_', ' ')}: {check['detail']}")
+        if integrity["unsupported"]:
+            lines += ["", "Unsupported claims (blocks export):"]
+            lines += [f"  - {u}" for u in integrity["unsupported"]]
+        integrity_path = os.path.join(out_dir, "Integrity_report.txt")
+        with open(integrity_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines))
+        files["integrity_report"] = integrity_path
+
+    # A CV with an unsupported claim must not go out the door -- the zip is
+    # the "ready to send" bundle, so it is the thing withheld. The CV/DOCX
+    # themselves are kept on disk (never discarded) so the report is
+    # reproducible and the candidate can see exactly what to fix.
     zip_path = os.path.join(out_dir, "application.zip")
     send = [files.get(k) for k in ("cv_pdf", "cv_docx", "letter_pdf", "letter_docx")]
-    try:
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            for path in filter(None, send):
-                zf.write(path, os.path.basename(path))
-        files["zip"] = zip_path
-    except Exception as e:
-        errors.append(f"zip: {type(e).__name__}: {e}")
+    if integrity and integrity["blocked"]:
+        errors.append("zip: withheld -- CV Integrity check found an unsupported claim, see Integrity_report.txt")
+    else:
+        try:
+            with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+                for path in filter(None, send):
+                    zf.write(path, os.path.basename(path))
+            files["zip"] = zip_path
+        except Exception as e:
+            errors.append(f"zip: {type(e).__name__}: {e}")
 
     tracker.upsert(job, path=pipeline_path, status="Package built", folder=out_dir,
                    coverage=fit["coverage"], relevance=fit["relevance"],
@@ -128,4 +159,4 @@ def build_package(job, jd_text, profile, base_dir="applications",
                    jd_chars=len(jd_text or ""))
 
     return {"folder": out_dir, "files": files, "fit": fit,
-            "ats": report, "errors": errors, "meta": meta}
+            "ats": report, "integrity": integrity, "errors": errors, "meta": meta}

@@ -245,7 +245,7 @@ def test_build_package_writes_every_artefact_for_one_job(tmp_path):
 
     assert result["errors"] == [], result["errors"]
     for key in ("cv_pdf", "cv_docx", "letter_pdf", "letter_docx", "prep_txt",
-                "prep_docx", "posting", "meta", "ats_report", "zip"):
+                "prep_docx", "posting", "meta", "ats_report", "integrity_report", "zip"):
         path = result["files"][key]
         assert __import__("os").path.getsize(path) > 0, f"{key} is empty"
 
@@ -253,6 +253,11 @@ def test_build_package_writes_every_artefact_for_one_job(tmp_path):
     assert meta["coverage"] == result["fit"]["coverage"]
     assert meta["ats_score"] == result["ats"]["score"]
     assert meta["errors"] == []
+
+    assert result["integrity"]["blocked"] is False, result["integrity"]["unsupported"]
+    assert meta["integrity_score"] == result["integrity"]["score"]
+    assert meta["integrity_blocked"] is False
+    assert __import__("os").path.getsize(result["files"]["integrity_report"]) > 0
 
     with zipfile.ZipFile(result["files"]["zip"]) as zf:
         assert sorted(zf.namelist()) == ["CV.docx", "CV.pdf", "CoverLetter.docx", "CoverLetter.pdf"]
@@ -270,3 +275,26 @@ def test_a_packaged_cv_still_passes_the_ats_audit(tmp_path):
     report = result["ats"]
     assert report["score"] >= 85, report["checks"]
     assert report["checks"]["no_glyph_corruption"]["status"] == "pass"
+
+
+
+def test_a_blocked_integrity_check_withholds_the_zip_but_keeps_the_cv(tmp_path, monkeypatch):
+    """An unsupported claim must stop the 'ready to send' bundle, not the
+    artefacts themselves -- the CV/DOCX stay on disk so the report is
+    reproducible and the candidate can see exactly what to fix."""
+    from engine import package as package_module
+
+    def fake_check_integrity(pdf_path, tailored, profile, jd_signal=None):
+        return {"score": 40, "checks": {"skills": {"status": "fail", "detail": "x"}},
+                "unsupported": ["Skill on the CV not present in your profile's skill list: SAP GRC"],
+                "blocked": True}
+
+    monkeypatch.setattr(package_module, "check_integrity", fake_check_integrity)
+
+    result = build_package(JOB, JD, PROFILE, base_dir=str(tmp_path / "applications"),
+                           pipeline_path=str(tmp_path / "pipeline.json"))
+
+    assert "zip" not in result["files"]
+    assert any("withheld" in e for e in result["errors"])
+    assert __import__("os").path.getsize(result["files"]["cv_pdf"]) > 0
+    assert __import__("os").path.getsize(result["files"]["integrity_report"]) > 0
