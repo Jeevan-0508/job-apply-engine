@@ -17,6 +17,8 @@ SKILL_WEIGHTS = {
     "physical security": 3,
     "theft investigation": 3,
     "fraud investigation": 3,
+    "fraud detection": 3,
+    "fraud prevention": 2,
     "supply chain security": 3,
     "cargo theft": 3,
     "inventory shrinkage": 3,
@@ -70,6 +72,18 @@ SKILL_WEIGHTS = {
 }
 
 # canonical -> extra phrases that mean the same thing
+# Conceptually related but NOT interchangeable skills. A profile that
+# evidences one of these must never be credited with the other -- the
+# relation is shown to the candidate as a semantic hint ("you have X, this
+# JD wants Y"), not folded into coverage/relevance scoring.
+SKILL_RELATED = {
+    "fraud investigation": ["fraud detection", "fraud prevention"],
+    "fraud detection": ["fraud investigation", "fraud prevention"],
+    "fraud prevention": ["fraud investigation", "fraud detection"],
+    "risk assessment": ["risk management", "risk governance"],
+    "risk management": ["risk assessment", "risk governance"],
+}
+
 SKILL_ALIASES = {
     "loss prevention": ["asset protection", "lp specialist", "verlustprävention"],
     "physical security": ["site security", "premises security", "werkschutz", "objektschutz"],
@@ -77,10 +91,9 @@ SKILL_ALIASES = {
         "theft investigations", "internal theft", "pilferage", "shrinkage investigation",
         "diebstahl", "diebstahlsermittlungen",
     ],
-    "fraud investigation": [
-        "fraud investigations", "fraud detection", "fraud prevention", "investigations",
-        "betrug", "betrugsprävention", "ermittlungen",
-    ],
+    "fraud investigation": ["fraud investigations", "investigations", "ermittlungen"],
+    "fraud detection": ["fraud detection systems", "fraud monitoring", "betrugserkennung"],
+    "fraud prevention": ["fraud risk", "fraud risk management", "betrugsprävention"],
     "supply chain security": ["transportation security", "logistics security", "freight security", "ttsi", "tapa"],
     "cargo theft": ["freight theft", "load theft", "trailer theft", "ladungsdiebstahl"],
     "inventory shrinkage": ["shrink", "shrinkage", "inventory loss", "stock loss", "inventurdifferenzen"],

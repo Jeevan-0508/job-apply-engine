@@ -11,3 +11,4 @@ data/
 # secret when hosted, so it must never be committed.
 config/profile.py
 secrets.toml
+venv/

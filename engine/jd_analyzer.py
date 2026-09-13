@@ -1,6 +1,13 @@
 import re
 
-from engine.skill_map import SKILL_ALIASES, SKILL_WEIGHTS
+from engine.skill_map import SKILL_ALIASES, SKILL_RELATED, SKILL_WEIGHTS
+
+# How a requirement was matched, most to least trustworthy. canonical_skills()
+# / analyze_jd() only ever produce EXACT/ALIAS hits, so existing coverage and
+# relevance scoring is unaffected by this addition -- SEMANTIC is exposed
+# only through canonical_skills_detailed() below for callers that need to
+# show a related-but-unproven skill without crediting it as a match.
+EXACT, ALIAS, SEMANTIC = "EXACT", "ALIAS", "SEMANTIC"
 
 
 def _phrases(skill):
@@ -45,6 +52,43 @@ def canonical_skills(text):
     return hits
 
 
+def canonical_skills_detailed(text):
+    """Like canonical_skills(), but keeps the match type per canonical skill.
+
+    Returns {canonical_skill: match_type}. EXACT is the canonical name itself,
+    ALIAS is a listed synonym (same skill, different wording) -- both are the
+    trustworthy hits canonical_skills()/match_profile() use for scoring.
+    SEMANTIC is a *related but distinct* skill found via SKILL_RELATED (e.g.
+    text about "fraud detection" when the caller asked about "fraud
+    investigation"): worth surfacing as a hint, never as evidence that
+    satisfies the original requirement.
+    """
+    text = (text or "").lower()
+    exact_or_alias = set()
+    detailed = {}
+
+    for skill in SKILL_WEIGHTS:
+        if re.search(rf"(?<!\w){re.escape(skill)}(?!\w)", text):
+            detailed[skill] = EXACT
+            exact_or_alias.add(skill)
+            continue
+        for phrase in SKILL_ALIASES.get(skill, []):
+            if re.search(rf"(?<!\w){re.escape(phrase)}(?!\w)", text):
+                detailed[skill] = ALIAS
+                exact_or_alias.add(skill)
+                break
+
+    for skill in SKILL_WEIGHTS:
+        if skill in detailed:
+            continue
+        for related in SKILL_RELATED.get(skill, []):
+            if related in exact_or_alias:
+                detailed[skill] = SEMANTIC
+                break
+
+    return detailed
+
+
 def match_profile(profile_skills, jd_signal, extra_corpus=""):
     """Split a JD's demands into what the profile evidences and what it doesn't.
 
@@ -75,7 +119,7 @@ def profile_corpus(profile):
     """All free text in a profile that can evidence a skill."""
     parts = [profile.get("summary", ""), profile.get("title", "")]
     for role in profile.get("experience", []) or []:
-        parts += [role.get("title", ""), role.get("company", "")]
+        parts += [role.get("role", ""), role.get("company", "")]
         parts += role.get("bullets", []) or []
     for ex in profile.get("star_examples", []) or []:
         parts += [ex.get(k, "") for k in ("title", "situation", "task", "action", "result")]
