@@ -1,12 +1,20 @@
+<p align="center"><img src="assets/jk-brand-banner.png" alt="Jeevan Siddhabhaktula: Risk. Governance. AI." width="280"></p>
+
+<div align="center">
+
 # Job Apply Engine
 
-A local-first job application tool for the German market. One click turns a
-search into finished applications: it finds real postings, reads each full job
-description, ranks them against your actual profile, and generates a tailored
-CV, cover letter, interview prep pack and ATS report per job — then tracks what
-you sent and what came back.
+**A local-first job application tool for the German market.**
+One click turns a search into finished applications: real postings, full job
+descriptions, ranked against your actual profile, into a tailored CV, cover
+letter, interview prep pack and ATS report per job, then tracked end to end.
 
-**Live app:** https://job-apply-engine-6a5fsqqd765xpj3pgf6sn8.streamlit.app/
+[![Live App](https://img.shields.io/badge/Live%20App-Streamlit-ff4b4b?style=for-the-badge)](https://job-apply-engine-6a5fsqqd765xpj3pgf6sn8.streamlit.app/)
+[![License](https://img.shields.io/badge/License-MIT-22c55e?style=for-the-badge)](LICENSE)
+[![Tests](https://img.shields.io/badge/Tests-224_passing-22c55e?style=for-the-badge)](tests)
+[![Stack](https://img.shields.io/badge/Stack-Python%20%7C%20Streamlit-818cf8?style=for-the-badge)](#architecture)
+
+</div>
 
 > Note: the hosted version above runs on Streamlit Community Cloud, so
 > anything you paste or upload there is processed on their servers, not
@@ -196,6 +204,58 @@ worth more than applying more.
 
 Applications sent and gone quiet for ten days are flagged for chasing. Status and
 notes are editable per row, and the whole pipeline exports to CSV.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    subgraph SEARCH["engine/search/"]
+        AA["arbeitsagentur.py
+official public API"]
+        LI["linkedin_search.py
+public jobs-guest search"]
+        DL["deeplinks.py
+Indeed / StepStone / Xing
+pre-filled search, not scraped"]
+        AG["aggregator.py
+merges + normalizes"]
+    end
+
+    subgraph ANALYZE["Rank against your profile"]
+        JD["jd_analyzer.py
+JD -> weighted skill signal"]
+        SK["skill_map.py
+weighted skills + aliases EN/DE"]
+        MT["match.py
+coverage / relevance score
+verdict + demand report"]
+    end
+
+    subgraph BUILD["One posting -> every artefact"]
+        CV["cv_builder.py"]
+        CL["cover_letter.py"]
+        IP["interview_prep.py"]
+        AT["ats_check.py
+re-parses the produced PDF"]
+        PK["package.py
+zips it all together"]
+    end
+
+    subgraph TRACK["tracker.py"]
+        DP["data/pipeline.json
+status, response rate, source conversion"]
+    end
+
+    AA --> AG
+    LI --> AG
+    DL --> AG
+    AG --> JD --> SK --> MT
+    MT --> CV --> PK
+    MT --> CL --> PK
+    MT --> IP --> PK
+    PK --> AT --> PK
+    PK --> DP
+```
 
 ## Setup
 
