@@ -10,7 +10,7 @@ descriptions, ranked against your actual profile, into a tailored CV, cover
 letter, interview prep pack and ATS report per job, then tracked end to end.
 
 [![Live App](https://img.shields.io/badge/Live%20App-Streamlit-ff4b4b?style=for-the-badge)](https://job-apply-engine-6a5fsqqd765xpj3pgf6sn8.streamlit.app/)
-[![License](https://img.shields.io/badge/License-MIT-22c55e?style=for-the-badge)](LICENSE)
+[![License](https://img.shields.io/badge/License-All%20Rights%20Reserved-ef4444?style=for-the-badge)](LICENSE)
 [![Tests](https://img.shields.io/badge/Tests-224_passing-22c55e?style=for-the-badge)](tests)
 [![Stack](https://img.shields.io/badge/Stack-Python%20%7C%20Streamlit-818cf8?style=for-the-badge)](#architecture)
 
