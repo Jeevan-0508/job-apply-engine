@@ -21,6 +21,8 @@ letter, interview prep pack and ATS report per job, then tracked end to end.
 > just yours. For actual personal/resume data, run it locally instead (see
 > below) so nothing leaves your machine.
 
+<p align="center"><a href="docs/getting-started.md">Getting started</a> · <a href="docs/quality-review.md">Quality review</a></p>
+
 Built for risk/GRC/compliance roles targeting Germany, but the search terms
 and skill map are easy to repoint at any field.
 
