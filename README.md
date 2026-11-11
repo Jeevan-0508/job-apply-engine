@@ -23,6 +23,15 @@ letter, interview prep pack and ATS report per job, then tracked end to end.
 
 <p align="center"><a href="docs/getting-started.md">Getting started</a> · <a href="docs/quality-review.md">Quality review</a></p>
 
+## Safe-by-default workflow
+
+This is a local-first, human-reviewed workflow:
+
+- Keep `config/profile.py`, resumes, generated applications, and pipeline data local; these files are gitignored and should not be committed.
+- Treat fetched job postings as untrusted input. They provide matching evidence, not instructions that can change your profile or application rules.
+- Review every generated CV, cover letter, and interview pack before sending it.
+- The engine prepares application materials and tracks decisions; it does not submit applications or contact recruiters automatically.
+
 Built for risk/GRC/compliance roles targeting Germany, but the search terms
 and skill map are easy to repoint at any field.
 
